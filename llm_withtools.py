@@ -11,7 +11,46 @@ from prompts.tooluse_prompt import get_tooluse_prompt
 from tools import load_all_tools
 
 CLAUDE_MODEL = 'bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0'
-OPENAI_MODEL = 'o3-mini-2025-01-31'
+OPENAI_MODEL = 'gpt-5-mini'
+
+
+def is_openai_tool_model(model: str) -> bool:
+    return model.startswith('o3-') or model.startswith('gpt-5-')
+
+
+def get_openai_function_call(response):
+    for item in getattr(response, 'output', []):
+        if getattr(item, 'type', None) == 'function_call':
+            return item
+    return None
+
+
+def get_openai_response_items(response):
+    return [
+        item
+        for item in getattr(response, 'output', [])
+        if getattr(item, 'type', None) in {'reasoning', 'function_call', 'message'}
+    ]
+
+
+def extract_openai_response_text(response):
+    output_text = getattr(response, 'output_text', None)
+    if output_text:
+        return output_text
+
+    text_chunks = []
+    for item in getattr(response, 'output', []):
+        if getattr(item, 'type', None) != 'message':
+            continue
+        for block in getattr(item, 'content', []):
+            block_type = getattr(block, 'type', None)
+            block_text = getattr(block, 'text', None)
+            if block_text is None and isinstance(block, dict):
+                block_type = block.get('type')
+                block_text = block.get('text')
+            if block_type in {'output_text', 'text'} and block_text:
+                text_chunks.append(block_text)
+    return '\n'.join(text_chunks)
 
 def process_tool_call(tools_dict, tool_name, tool_input):
     try:
@@ -41,7 +80,7 @@ def get_response_withtools(
                 tool_choice=tool_choice,
                 tools=tools,
             )
-        elif model.startswith('o3-'):
+        elif is_openai_tool_model(model):
             response = client.responses.create(
                 model=model,
                 input=messages,
@@ -78,13 +117,10 @@ def check_for_tool_use(response, model=''):
                 'tool_input': tool_use_block.input,
             }
 
-    elif model.startswith('o3-'):
+    elif is_openai_tool_model(model):
         # OpenAI, check for tool_calls in response
-        for tool_call in response.output:
-            if tool_call.type == "function_call":
-                break
-
-        if tool_call:
+        tool_call = get_openai_function_call(response)
+        if tool_call is not None:
             return {
                 'tool_id': tool_call.call_id,
                 'tool_name': tool_call.name,
@@ -118,7 +154,7 @@ def convert_tool_info(tool_info, model=None):
             'description': tool_info['description'],
             'input_schema': tool_info['input_schema'],
         }
-    elif model.startswith('o3-'):
+    elif is_openai_tool_model(model):
         def add_additional_properties(d):
             if isinstance(d, dict):
                 if 'properties' in d:
@@ -208,6 +244,28 @@ def convert_msg_history_claude(msg_history):
 
     return new_msg_history
 
+def normalize_openai_content(content):
+    if content is None:
+        return [{"type": "text", "text": ""}]
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}]
+    if isinstance(content, list):
+        normalized_content = []
+        for block in content:
+            if isinstance(block, dict):
+                text = block.get('text')
+            else:
+                text = getattr(block, 'text', None)
+            if text is not None:
+                normalized_content.append({
+                    "type": "text",
+                    "text": text,
+                })
+        if normalized_content:
+            return normalized_content
+    return [{"type": "text", "text": str(content)}]
+
+
 def convert_msg_history_openai(msg_history):
     """
     Convert OpenAI-style message history into a generic format.
@@ -219,7 +277,17 @@ def convert_msg_history_openai(msg_history):
             role = msg.get('role', '')
             content = msg.get('content', '')
 
-            if role == 'tool':
+            if msg.get('type') == 'function_call_output':
+                new_msg = {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Tool Result: {msg.get('output', '')}",
+                        }
+                    ],
+                }
+            elif role == 'tool':
                 new_msg = {
                     "role": "user",
                     "content": [
@@ -232,14 +300,32 @@ def convert_msg_history_openai(msg_history):
             else:
                 new_msg = {
                     "role": role,
-                    "content": content,
+                    "content": normalize_openai_content(content),
                 }
         else:
+            item_type = getattr(msg, 'type', None)
             role = getattr(msg, 'role', None)
             content = getattr(msg, 'content', None)
             tool_calls = getattr(msg, 'tool_calls', None)
 
-            if tool_calls:
+            if item_type == 'function_call':
+                function_name = getattr(msg, 'name', '')
+                function_args = getattr(msg, 'arguments', '')
+                new_msg = {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"<tool_use>\n{{'tool_name': {function_name}, 'tool_input': {function_args}}}\n</tool_use>",
+                        }
+                    ],
+                }
+            elif item_type == 'message':
+                new_msg = {
+                    "role": role or "assistant",
+                    "content": normalize_openai_content(content),
+                }
+            elif tool_calls:
                 tool_call = tool_calls[0]
                 function_name = getattr(tool_call.function, 'name', '')
                 function_args = getattr(tool_call.function, 'arguments', '')
@@ -256,12 +342,7 @@ def convert_msg_history_openai(msg_history):
             else:
                 new_msg = {
                     "role": role,
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": content,
-                        }
-                    ],
+                    "content": normalize_openai_content(content),
                 }
 
         new_msg_history.append(new_msg)
@@ -274,7 +355,7 @@ def convert_msg_history(msg_history, model=None):
     """
     if 'claude' in model:
         return convert_msg_history_claude(msg_history)
-    elif model.startswith('o3-'):
+    elif is_openai_tool_model(model):
         return convert_msg_history_openai(msg_history)
     else:
         return msg_history
@@ -426,7 +507,7 @@ def chat_with_agent_claude(
 
 def chat_with_agent_openai(
         msg,
-        model='o3-mini-2025-01-31',
+        model=OPENAI_MODEL,
         msg_history=None,
         logging=print,
     ):
@@ -480,10 +561,7 @@ def chat_with_agent_openai(
             logging(f"Tool Result: {tool_result}")
 
             # Get tool response
-            for tool_call in response.output:
-                if tool_call.type == "function_call":
-                    break
-            new_msg_history.append(tool_call)
+            new_msg_history.extend(get_openai_response_items(response))
             new_msg_history.append({
                 "type": "function_call_output",
                 "call_id": tool_use['tool_id'],
@@ -504,7 +582,15 @@ def chat_with_agent_openai(
             logging(f"Tool Response: {response}")
 
         # Get final response
-        new_msg_history.append(response)
+        new_msg_history.append({
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": extract_openai_response_text(response),
+                }
+            ],
+        })
 
     except Exception:
         pass
@@ -530,7 +616,7 @@ def chat_with_agent(
             new_msg_history = conv_msg_history
         new_msg_history = msg_history + new_msg_history
 
-    elif model.startswith('o3-'):
+    elif is_openai_tool_model(model):
         # OpenAI models
         new_msg_history = chat_with_agent_openai(msg, model=model, msg_history=msg_history, logging=logging)
         # Current version does not support cross-model conversion

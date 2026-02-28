@@ -16,6 +16,7 @@ AVAILABLE_LLMS = [
     "gpt-4o-mini-2024-07-18",
     "gpt-4o-2024-05-13",
     "gpt-4o-2024-08-06",
+    "gpt-5-mini",
     "o1-preview-2024-09-12",
     "o1-mini-2024-09-12",
     "o1-2024-12-17",
@@ -41,6 +42,10 @@ AVAILABLE_LLMS = [
     "deepseek-reasoner",
 ]
 
+
+def is_openai_reasoning_model(model: str) -> bool:
+    return model.startswith("o1-") or model.startswith("o3-") or model.startswith("gpt-5-")
+
 def create_client(model: str):
     """
     Create and return an LLM client based on the specified model.
@@ -65,7 +70,7 @@ def create_client(model: str):
         client_model = model.split("/")[-1]
         print(f"Using Vertex AI with model {client_model}.")
         return anthropic.AnthropicVertex(), client_model
-    elif 'gpt' in model or model.startswith("o1-") or model.startswith("o3-"):
+    elif 'gpt' in model or is_openai_reasoning_model(model):
         print(f"Using OpenAI API with model {model}.")
         return openai.OpenAI(), model
     elif model.startswith("deepseek-"):
@@ -228,20 +233,19 @@ def get_response_from_llm(
         )
         content = response.choices[0].message.content
         new_msg_history = new_msg_history + [{"role": "assistant", "content": content}]
-    elif model.startswith("o1-") or model.startswith("o3-"):
+    elif is_openai_reasoning_model(model):
         new_msg_history = msg_history + [{"role": "user", "content": system_message + msg}]
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                # {"role": "user", "content": system_message},
+        completion_kwargs = {
+            "model": model,
+            "messages": [
                 *new_msg_history,
             ],
-            temperature=1,
-            # max_completion_tokens=MAX_OUTPUT_TOKENS,
-            n=1,
-            # stop=None,
-            seed=0,
-        )
+            "n": 1,
+            "seed": 0,
+        }
+        if not model.startswith("gpt-5-"):
+            completion_kwargs["temperature"] = 1
+        response = client.chat.completions.create(**completion_kwargs)
         content = response.choices[0].message.content
         new_msg_history = new_msg_history + [{"role": "assistant", "content": content}]
     elif model in ["deepseek-chat", "deepseek-coder"]:

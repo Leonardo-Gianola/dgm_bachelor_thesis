@@ -5,6 +5,7 @@ import os
 import docker
 
 from llm import create_client, get_response_from_llm, extract_json_between_markers
+from llm_withtools import OPENAI_MODEL
 from prompts.self_improvement_prompt import get_diagnose_prompt_polyglot, get_diagnose_prompt_swe, get_problem_description_prompt
 from prompts.diagnose_improvement_prompt import get_diagnose_improvement_prompt
 from prompts.testrepo_prompt import get_test_description
@@ -25,7 +26,7 @@ from utils.docker_utils import (
 )
 
 dataset = None
-diagnose_model = 'o1-2024-12-17'
+diagnose_model = OPENAI_MODEL
 
 def diagnose_problem(entry, commit, root_dir, out_dir, patch_files=[], max_attempts=3, polyglot=False):
     client = create_client(diagnose_model)

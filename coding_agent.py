@@ -6,7 +6,7 @@ from logging.handlers import RotatingFileHandler
 import os
 import threading
 
-from llm_withtools import CLAUDE_MODEL, OPENAI_MODEL, chat_with_agent
+from llm_withtools import OPENAI_MODEL, chat_with_agent
 from utils.eval_utils import get_report_score, msg_history_to_report, score_tie_breaker
 from utils.git_utils import diff_versus_commit, reset_to_commit, apply_patch
 
@@ -82,7 +82,7 @@ class AgenticSystem:
         self.test_description = test_description
         self.self_improve = self_improve
         self.instance_id = instance_id if not self_improve else 'dgm'
-        self.code_model = CLAUDE_MODEL
+        self.code_model = OPENAI_MODEL
 
         # Initialize logger and store it in thread-local storage
         self.logger = setup_logger(chat_history_file)
