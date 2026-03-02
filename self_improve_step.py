@@ -305,9 +305,9 @@ def self_improve(
     log_container_output(exec_result)
     exec_result = container.exec_run("git -c user.name='user' -c user.email='you@example.com' commit -m 'a nonsense commit message'", workdir='/dgm/')
     log_container_output(exec_result)
-    commit_output = exec_result.output.decode('utf-8')
-    # Git commit output format: `[master (root-commit) <hash>] a nonsense commit message`
-    commit_hash = commit_output.split()[1].strip("[]")  # Extract the hash part
+    exec_result = container.exec_run("git rev-parse HEAD", workdir='/dgm/')
+    log_container_output(exec_result)
+    commit_hash = exec_result.output.decode('utf-8').strip()
 
     # Install requirements again in case of any changes
     exec_result = container.exec_run("python -m pip install -r /dgm/requirements.txt", workdir='/')

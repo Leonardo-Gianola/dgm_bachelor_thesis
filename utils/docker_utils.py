@@ -171,6 +171,19 @@ def sync_repo_to_container(container, source_dir: Union[str, Path], dest_dir: Un
         raise RuntimeError(f"Failed to sync repository from {source_dir} to {dest_dir}")
     safe_log(f"Repository sync to {dest_dir} completed successfully")
 
+
+def reset_container_git_repo(container, repo_dir: Union[str, Path]) -> None:
+    repo_dir = Path(repo_dir)
+    exec_result = container.exec_run(f"rm -rf {repo_dir}/.git", workdir='/')
+    log_container_output(exec_result)
+    exec_result = container.exec_run(f"git init -b main {repo_dir}", workdir='/')
+    log_container_output(exec_result)
+    exec_result = container.exec_run(
+        "git config core.autocrlf false && git config core.filemode false",
+        workdir=str(repo_dir),
+    )
+    log_container_output(exec_result)
+
 def build_dgm_container(
         client,
         repo_path='./',
@@ -202,6 +215,7 @@ def build_dgm_container(
         # Run the container
         container = client.containers.run(image=image_name, name=container_name, detach=True)
         sync_repo_to_container(container, repo_path, '/dgm')
+        reset_container_git_repo(container, '/dgm')
         safe_log(f"Container '{container_name}' started successfully.")
         return container
     except Exception as e:
