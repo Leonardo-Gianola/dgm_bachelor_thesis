@@ -272,7 +272,8 @@ def self_improve(
         client, root_dir, image_name, container_name,
         force_rebuild=force_rebuild,
     )
-    container.start()
+    if container is None:
+        raise RuntimeError("Failed to start container")
 
     if polyglot:
         # remove the swe version of coding_agent.py

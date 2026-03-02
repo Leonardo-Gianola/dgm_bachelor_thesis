@@ -178,10 +178,9 @@ def reset_container_git_repo(container, repo_dir: Union[str, Path]) -> None:
     log_container_output(exec_result)
     exec_result = container.exec_run(f"git init -b main {repo_dir}", workdir='/')
     log_container_output(exec_result)
-    exec_result = container.exec_run(
-        "git config core.autocrlf false && git config core.filemode false",
-        workdir=str(repo_dir),
-    )
+    exec_result = container.exec_run("git config core.autocrlf false", workdir=str(repo_dir))
+    log_container_output(exec_result)
+    exec_result = container.exec_run("git config core.filemode false", workdir=str(repo_dir))
     log_container_output(exec_result)
 
 def build_dgm_container(
