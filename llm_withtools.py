@@ -6,16 +6,17 @@ import backoff
 import openai
 import copy
 
-from llm import create_client, get_response_from_llm
+from llm import create_client, get_model_family_name, get_response_from_llm
 from prompts.tooluse_prompt import get_tooluse_prompt
 from tools import load_all_tools
 
 CLAUDE_MODEL = 'bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0'
-OPENAI_MODEL = 'gpt-5-mini'
+OPENAI_MODEL = 'openrouter/openai/gpt-5-mini'
 
 
 def is_openai_tool_model(model: str) -> bool:
-    return model.startswith('o3-') or model.startswith('gpt-5-')
+    model_family = get_model_family_name(model)
+    return model_family.startswith('o3-') or model_family.startswith('gpt-5-')
 
 
 def get_openai_function_call(response):
@@ -29,7 +30,7 @@ def get_openai_response_items(response):
     return [
         item
         for item in getattr(response, 'output', [])
-        if getattr(item, 'type', None) in {'reasoning', 'function_call', 'message'}
+        if getattr(item, 'type', None) in {'function_call', 'message'}
     ]
 
 
@@ -51,6 +52,15 @@ def extract_openai_response_text(response):
             if block_type in {'output_text', 'text'} and block_text:
                 text_chunks.append(block_text)
     return '\n'.join(text_chunks)
+
+
+def serialize_tool_output(tool_result):
+    if isinstance(tool_result, str):
+        return tool_result
+    try:
+        return json.dumps(tool_result, ensure_ascii=False, default=str)
+    except TypeError:
+        return str(tool_result)
 
 def process_tool_call(tools_dict, tool_name, tool_input):
     try:
@@ -516,6 +526,7 @@ def chat_with_agent_openai(
         msg_history = []
     new_msg_history = [
         {
+            "type": "message",
             "role": "user",
             "content": [
                 {
@@ -564,8 +575,9 @@ def chat_with_agent_openai(
             new_msg_history.extend(get_openai_response_items(response))
             new_msg_history.append({
                 "type": "function_call_output",
+                "id": f"{tool_use['tool_id']}_output",
                 "call_id": tool_use['tool_id'],
-                "output": tool_result,
+                "output": serialize_tool_output(tool_result),
             })
             response = get_response_withtools(
                 client=client,
@@ -583,10 +595,12 @@ def chat_with_agent_openai(
 
         # Get final response
         new_msg_history.append({
+            "type": "message",
             "role": "assistant",
+            "status": "completed",
             "content": [
                 {
-                    "type": "text",
+                    "type": "output_text",
                     "text": extract_openai_response_text(response),
                 }
             ],

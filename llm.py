@@ -8,6 +8,7 @@ import backoff
 import openai
 
 MAX_OUTPUT_TOKENS = 4096
+OPENROUTER_PREFIX = "openrouter/"
 AVAILABLE_LLMS = [
     # Anthropic models
     "claude-3-5-sonnet-20240620",
@@ -17,6 +18,7 @@ AVAILABLE_LLMS = [
     "gpt-4o-2024-05-13",
     "gpt-4o-2024-08-06",
     "gpt-5-mini",
+    "openrouter/openai/gpt-5-mini",
     "o1-preview-2024-09-12",
     "o1-mini-2024-09-12",
     "o1-2024-12-17",
@@ -43,8 +45,42 @@ AVAILABLE_LLMS = [
 ]
 
 
+def strip_local_provider_prefix(model: str) -> str:
+    if model.startswith(OPENROUTER_PREFIX):
+        return model[len(OPENROUTER_PREFIX):]
+    return model
+
+
+def get_model_family_name(model: str) -> str:
+    normalized_model = strip_local_provider_prefix(model)
+    if "/" in normalized_model and not normalized_model.startswith(("bedrock/", "vertex_ai/")):
+        return normalized_model.split("/")[-1]
+    return normalized_model
+
+
+def is_openrouter_model(model: str) -> bool:
+    return model.startswith(OPENROUTER_PREFIX)
+
+
+def get_openrouter_client_model(model: str) -> str:
+    normalized_model = strip_local_provider_prefix(model)
+    if normalized_model == "llama3.1-405b":
+        return "meta-llama/llama-3.1-405b-instruct"
+    return normalized_model
+
+
 def is_openai_reasoning_model(model: str) -> bool:
-    return model.startswith("o1-") or model.startswith("o3-") or model.startswith("gpt-5-")
+    model_family = get_model_family_name(model)
+    return model_family.startswith("o1-") or model_family.startswith("o3-") or model_family.startswith("gpt-5-")
+
+
+def is_openai_chat_model(model: str) -> bool:
+    return get_model_family_name(model).startswith("gpt-4o-")
+
+
+def is_openai_model(model: str) -> bool:
+    model_family = get_model_family_name(model)
+    return model_family.startswith("gpt-") or model_family.startswith("o1-") or model_family.startswith("o3-")
 
 def create_client(model: str):
     """
@@ -54,7 +90,15 @@ def create_client(model: str):
     Returns:
         Tuple[Any, str]: A tuple containing the client instance and the client model name.
     """
-    if model.startswith("claude-"):
+    if is_openrouter_model(model):
+        client_model = get_openrouter_client_model(model)
+        print(f"Using OpenRouter API with model {client_model}.")
+        client = openai.OpenAI(
+            api_key=os.environ["OPENROUTER_API_KEY"],
+            base_url="https://openrouter.ai/api/v1"
+        )
+        return client, client_model
+    elif model.startswith("claude-"):
         print(f"Using Anthropic API with model {model}.")
         return anthropic.Anthropic(), model
     elif model.startswith("bedrock") and "claude" in model:
@@ -70,9 +114,10 @@ def create_client(model: str):
         client_model = model.split("/")[-1]
         print(f"Using Vertex AI with model {client_model}.")
         return anthropic.AnthropicVertex(), client_model
-    elif 'gpt' in model or is_openai_reasoning_model(model):
-        print(f"Using OpenAI API with model {model}.")
-        return openai.OpenAI(), model
+    elif is_openai_model(model):
+        client_model = strip_local_provider_prefix(model)
+        print(f"Using OpenAI API with model {client_model}.")
+        return openai.OpenAI(), client_model
     elif model.startswith("deepseek-"):
         print(f"Using OpenAI API with {model}.")
         client = openai.OpenAI(
@@ -81,11 +126,13 @@ def create_client(model: str):
         )
         return client, model
     elif model == "llama3.1-405b":
-        print(f"Using OpenAI API with {model}.")
+        client_model = get_openrouter_client_model(model)
+        print(f"Using OpenRouter API with {client_model}.")
         client = openai.OpenAI(
             api_key=os.environ["OPENROUTER_API_KEY"],
             base_url="https://openrouter.ai/api/v1"
-        ), model
+        )
+        return client, client_model
     else:
         raise ValueError(f"Model {model} not supported.")
 
@@ -104,11 +151,7 @@ def get_batch_responses_from_llm(
     if msg_history is None:
         msg_history = []
 
-    if model in [
-        "gpt-4o-2024-05-13",
-        "gpt-4o-mini-2024-07-18",
-        "gpt-4o-2024-08-06",
-    ]:
+    if is_openai_chat_model(model):
         new_msg_history = msg_history + [{"role": "user", "content": msg}]
         response = client.chat.completions.create(
             model=model,
@@ -217,7 +260,7 @@ def get_response_from_llm(
                 ],
             }
         ]
-    elif model.startswith("gpt-4o-"):
+    elif is_openai_chat_model(model):
         new_msg_history = msg_history + [{"role": "user", "content": msg}]
         response = client.chat.completions.create(
             model=model,
@@ -243,7 +286,7 @@ def get_response_from_llm(
             "n": 1,
             "seed": 0,
         }
-        if not model.startswith("gpt-5-"):
+        if not get_model_family_name(model).startswith("gpt-5-"):
             completion_kwargs["temperature"] = 1
         response = client.chat.completions.create(**completion_kwargs)
         content = response.choices[0].message.content

@@ -344,6 +344,7 @@ def self_improve(
         "AWS_ACCESS_KEY_ID": os.getenv('AWS_ACCESS_KEY_ID'),
         "AWS_SECRET_ACCESS_KEY": os.getenv('AWS_SECRET_ACCESS_KEY'),
         "OPENAI_API_KEY": os.getenv('OPENAI_API_KEY'),
+        "OPENROUTER_API_KEY": os.getenv('OPENROUTER_API_KEY'),
     }
     cmd = [
         "timeout", "1800",  # 30min timeout
