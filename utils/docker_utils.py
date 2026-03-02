@@ -1,5 +1,6 @@
 import io
 import logging
+import subprocess
 import threading
 from pathlib import Path
 import tarfile
@@ -101,6 +102,75 @@ def create_archive(path: Union[str, Path], data: Optional[bytes] = None) -> byte
     tar_stream.seek(0)
     return tar_stream.read()
 
+
+REPO_SYNC_EXCLUDES = {
+    ".git",
+    ".venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    "logs",
+    "output_dgm",
+    "output_selfimprove",
+    "output_peer_review",
+    "swe_bench/SWE-bench",
+}
+
+
+def _should_exclude_repo_path(rel_path: Path, extra_excludes=None) -> bool:
+    rel_path_str = rel_path.as_posix()
+    excluded_prefixes = set(REPO_SYNC_EXCLUDES)
+    if extra_excludes:
+        excluded_prefixes.update(extra_excludes)
+    return any(
+        rel_path_str == prefix or rel_path_str.startswith(f"{prefix}/")
+        for prefix in excluded_prefixes
+    )
+
+
+def create_repo_archive(source_dir: Union[str, Path], extra_excludes=None) -> tuple[bytes, int]:
+    source_dir = Path(source_dir).resolve()
+    result = subprocess.run(
+        ["git", "-C", str(source_dir), "ls-files", "--cached", "--others", "--exclude-standard"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to list repo files for sync: {result.stderr.strip()}")
+
+    tar_stream = io.BytesIO()
+    synced_count = 0
+    with tarfile.open(fileobj=tar_stream, mode='w') as tar:
+        for rel_path_str in result.stdout.splitlines():
+            rel_path = Path(rel_path_str)
+            if _should_exclude_repo_path(rel_path, extra_excludes):
+                continue
+            abs_path = source_dir / rel_path
+            if not abs_path.exists():
+                continue
+            tar.add(abs_path, arcname=rel_path.as_posix())
+            synced_count += 1
+
+    if synced_count == 0:
+        raise RuntimeError(f"No repository files were selected for sync from {source_dir}")
+
+    tar_stream.seek(0)
+    return tar_stream.read(), synced_count
+
+
+def sync_repo_to_container(container, source_dir: Union[str, Path], dest_dir: Union[str, Path], extra_excludes=None) -> None:
+    source_dir = Path(source_dir).resolve()
+    dest_dir = Path(dest_dir)
+
+    archive, synced_count = create_repo_archive(source_dir, extra_excludes=extra_excludes)
+    container.exec_run(f"mkdir -p {dest_dir}")
+    safe_log(f"Syncing {synced_count} repo files from {source_dir} to {dest_dir}")
+    success = container.put_archive(str(dest_dir), archive)
+    if not success:
+        raise RuntimeError(f"Failed to sync repository from {source_dir} to {dest_dir}")
+    safe_log(f"Repository sync to {dest_dir} completed successfully")
+
 def build_dgm_container(
         client,
         repo_path='./',
@@ -131,6 +201,7 @@ def build_dgm_container(
     try:
         # Run the container
         container = client.containers.run(image=image_name, name=container_name, detach=True)
+        sync_repo_to_container(container, repo_path, '/dgm')
         safe_log(f"Container '{container_name}' started successfully.")
         return container
     except Exception as e:
