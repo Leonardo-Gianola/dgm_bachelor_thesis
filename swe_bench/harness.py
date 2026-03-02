@@ -21,6 +21,28 @@ from swe_bench.utils import (
 )
 from utils.common_utils import load_json_file
 
+REPO_ROOT_MARKERS = (
+    "coding_agent.py",
+    "requirements.txt",
+    "llm.py",
+    "llm_withtools.py",
+    "prompts",
+    "swe_bench",
+)
+
+
+def get_repo_root():
+    repo_root = Path(__file__).resolve().parents[1]
+    missing_markers = [
+        marker for marker in REPO_ROOT_MARKERS if not (repo_root / marker).exists()
+    ]
+    if missing_markers:
+        raise FileNotFoundError(
+            f"Could not resolve repo root from {repo_root}. Missing: {missing_markers}"
+        )
+    return repo_root
+
+
 def process_entry(entry, out_dname, model_name_or_path, model_patch_paths):
     """
     Process a single dataset entry. This function encapsulates the main processing logic
@@ -39,6 +61,7 @@ def process_entry(entry, out_dname, model_name_or_path, model_patch_paths):
         return {"success": True, "instance_id": instance_id}
 
     try:
+        repo_root = get_repo_root()
         # Create and start the Docker container
         client = docker.from_env()
         run_id = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
@@ -52,34 +75,18 @@ def process_entry(entry, out_dname, model_name_or_path, model_patch_paths):
         # Now create and start the container
         container = build_container(test_spec, client, run_id, logger, nocache, force_rebuild=False)
         container.start()
-
-        # Check that we are in dgm directory
-        tmp_currdir = os.path.abspath(os.getcwd())
-        logger.info(f"Current directory: {tmp_currdir}")
-        # If not in dgm directory, try to change to it
-        if not tmp_currdir.endswith('/dgm'):
-            try:
-                os.chdir('dgm')
-                tmp_currdir = os.path.abspath(os.getcwd())
-                logger.info(f"Changed directory to: {tmp_currdir}")
-            except Exception as e:
-                pass
-        # If still not in dgm directory, go up until we find it
-        while not tmp_currdir.endswith('/dgm'):
-            os.chdir('..')
-            tmp_currdir = os.path.abspath(os.getcwd())
-            logger.info(f"Changed directory to: {tmp_currdir}")
+        logger.info(f"Resolved repo root to: {repo_root}")
 
         # Copy the necessary files and requirements to the container
-        copy_to_container(container, 'coding_agent.py', '/dgm/coding_agent.py')
-        copy_to_container(container, 'requirements.txt', '/dgm/requirements.txt')
-        copy_to_container(container, 'pytest.ini', '/dgm/pytest.ini')
-        copy_to_container(container, 'tools/', '/dgm/tools/')
-        copy_to_container(container, 'utils/', '/dgm/utils/')
-        copy_to_container(container, 'tests/', '/dgm/tests/')
-        copy_to_container(container, 'prompts/', '/dgm/prompts/')
-        copy_to_container(container, 'llm.py', '/dgm/llm.py')
-        copy_to_container(container, 'llm_withtools.py', '/dgm/llm_withtools.py')
+        copy_to_container(container, repo_root / 'coding_agent.py', '/dgm/coding_agent.py')
+        copy_to_container(container, repo_root / 'requirements.txt', '/dgm/requirements.txt')
+        copy_to_container(container, repo_root / 'pytest.ini', '/dgm/pytest.ini')
+        copy_to_container(container, repo_root / 'tools', '/dgm/tools/')
+        copy_to_container(container, repo_root / 'utils', '/dgm/utils/')
+        copy_to_container(container, repo_root / 'tests', '/dgm/tests/')
+        copy_to_container(container, repo_root / 'prompts', '/dgm/prompts/')
+        copy_to_container(container, repo_root / 'llm.py', '/dgm/llm.py')
+        copy_to_container(container, repo_root / 'llm_withtools.py', '/dgm/llm_withtools.py')
         chat_history_file_container = f'/dgm/{chat_history_file.name}'
 
         # Install issue requirements
