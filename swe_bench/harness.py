@@ -9,7 +9,7 @@ from datasets import load_dataset
 
 from prompts.testrepo_prompt import get_test_description
 from swebench.harness.test_spec import make_test_spec
-from swebench.harness.docker_build import build_env_images, build_container, cleanup_container
+from swebench.harness.docker_build import build_instance_images, build_container, cleanup_container
 
 from swe_bench.utils import (
     copy_to_container,
@@ -193,6 +193,7 @@ def harness(
         test_task_list=None,
         num_samples=-1,
         max_workers=4,
+        docker_build_workers=1,
         model_name_or_path=None,
         model_patch_paths=None,
         num_evals=1,
@@ -206,6 +207,7 @@ def harness(
         test_task_list: List of task IDs to process (None for all)
         num_samples: Number of samples to process (-1 for all)
         max_workers: Maximum number of concurrent threads
+        docker_build_workers: Maximum number of concurrent Docker image builds
         model_name_or_path: Model name or path
         model_patch_paths: Paths to the model patches for dgm
         num_evals: Repeated number of swe evaluations
@@ -229,9 +231,15 @@ def harness(
     if num_samples > 0:
         entries = entries[:num_samples]
 
-    # Build the environment images
+    # Prebuild instance images with a separate, conservative worker cap.
+    # Reusing the evaluation worker count here can OOM Docker on WSL during image setup.
     client = docker.from_env()
-    build_env_images(client, dataset=entries, force_rebuild=False, max_workers=max_workers)
+    build_instance_images(
+        client,
+        dataset=entries,
+        force_rebuild=False,
+        max_workers=docker_build_workers,
+    )
     
     # Define a function to handle a single evaluation for all specified issues
     def process_evaluation(eval_idx):
@@ -270,6 +278,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_samples", type=int, default=-1, help="Number of samples to process")
     parser.add_argument("--max_workers", type=int, default=4, help="Maximum number of concurrent threads")
+    parser.add_argument("--docker_build_workers", type=int, default=1, help="Maximum number of concurrent Docker image builds")
     parser.add_argument("--model_name_or_path", type=str, default=None, help="Model name or path")
     parser.add_argument("--model_patch_paths", type=str, default=None, help="Paths to the model patches")
     parser.add_argument("--num_evals", type=int, default=1, help="Repeated number of swe evaluations")
@@ -292,6 +301,7 @@ def main():
         test_task_list=test_task_list,
         num_samples=args.num_samples,
         max_workers=args.max_workers,
+        docker_build_workers=args.docker_build_workers,
         model_name_or_path=args.model_name_or_path,
         model_patch_paths=args.model_patch_paths,
         num_evals=args.num_evals,
