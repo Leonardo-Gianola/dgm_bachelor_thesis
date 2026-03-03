@@ -421,8 +421,9 @@ def chat_with_agent_manualtools(msg, model, msg_history=None, logging=print):
             # Check for next tool use
             tool_use = check_for_tool_use(response, model=client_model)
 
-    except Exception:
-        pass
+    except Exception as e:
+        logging(f"Error in chat_with_agent_manualtools: {str(e)}")
+        raise
 
     return new_msg_history
 
@@ -510,8 +511,9 @@ def chat_with_agent_claude(
             ],
         })
 
-    except Exception:
-        pass
+    except Exception as e:
+        logging(f"Error in chat_with_agent_claude: {str(e)}")
+        raise
 
     return new_msg_history
 
@@ -606,8 +608,9 @@ def chat_with_agent_openai(
             ],
         })
 
-    except Exception:
-        pass
+    except Exception as e:
+        logging(f"Error in chat_with_agent_openai: {str(e)}")
+        raise
 
     return new_msg_history
 

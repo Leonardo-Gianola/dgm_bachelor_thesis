@@ -123,7 +123,11 @@ def save_metadata(metadata, output_dir):
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, indent=4)
 
-def run_harness_swe(entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id, test_more_threshold, test_task_list, test_task_list_more):
+def run_harness_swe(
+        entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id,
+        test_more_threshold, test_task_list, test_task_list_more,
+        full_eval_threshold=None, test_task_list_big=None,
+    ):
     safe_log('Start harness')
     test_task_list = [entry] if test_task_list is None else test_task_list
     dnames = harness(
@@ -177,6 +181,37 @@ def run_harness_swe(entry, model_name_or_path, patch_files, num_evals, output_di
         performances, overall_performance = get_all_performance(model_name_or_path, results_dir=output_dir)
         metadata['overall_performance'] = overall_performance
         safe_log("End of evaluation more")
+
+    # Run the full evaluation on the big split once a run looks competitive.
+    if (
+        overall_performance and
+        full_eval_threshold is not None and
+        test_task_list_big is not None and
+        overall_performance.get('accuracy_score', 0) >= full_eval_threshold
+    ):
+        safe_log("Start full evaluation cycle")
+        dnames = harness(
+            test_task_list=test_task_list_big,
+            num_samples=-1,
+            max_workers=min(5, len(test_task_list_big)),
+            model_name_or_path=model_name_or_path,
+            model_patch_paths=patch_files,
+            num_evals=num_evals,
+            num_evals_parallel=5,
+            pred_dname=os.path.join(output_dir, "predictions"),
+        )
+        safe_log('Start make_report full')
+        make_report(
+            dnames,
+            run_ids=[f"{run_id}_{i}" for i in range(len(dnames))],
+            dataset_name="princeton-nlp/SWE-bench_Verified",
+            output_dir=output_dir,
+            dnames_workers=5,
+        )
+        safe_log('Start get_performance full')
+        performances, overall_performance = get_all_performance(model_name_or_path, results_dir=output_dir)
+        metadata['overall_performance'] = overall_performance
+        safe_log("End of full evaluation")
 
 def run_harness_polyglot(entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id, test_more_threshold, test_task_list, test_task_list_more):
     safe_log('Start harness')
@@ -395,7 +430,12 @@ def self_improve(
     if model_patch_exists and model_patch_notempty:
         try:
             if not polyglot:
-                run_harness_swe(entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id, test_more_threshold, test_task_list, test_task_list_more)
+                run_harness_swe(
+                    entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id,
+                    test_more_threshold, test_task_list, test_task_list_more,
+                    full_eval_threshold=full_eval_threshold,
+                    test_task_list_big=test_task_list_big,
+                )
             else:
                 run_harness_polyglot(entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id, test_more_threshold, test_task_list, test_task_list_more)
         except Exception as e:
