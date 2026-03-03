@@ -81,17 +81,15 @@ def preds_to_jsonl(dname, predictions):
     return predictions_jsonl
 
 def run_evals(predictions_jsonl, run_id, dataset_name, root_dir, output_dir, num_eval_procs=5):
-    os.chdir(output_dir)  # switch dir so that things will be saved in the specified output_dir
-    run_evals_cmd = f"""
-python {os.path.join(root_dir, './swe_bench/SWE-bench/swebench/harness/run_evaluation.py')}
-    --dataset_name {dataset_name}
-    --predictions_path {predictions_jsonl}
-    --max_workers {num_eval_procs}
-    --run_id {run_id}
-"""
-    run_evals_cmd = " ".join([line.strip() for line in run_evals_cmd.split() if line.strip()])
-    subprocess.run(run_evals_cmd.split(), check=True)
-    os.chdir(root_dir)  # switch back to the original directory
+    run_evals_cmd = [
+        "python",
+        os.path.join(root_dir, "./swe_bench/SWE-bench/swebench/harness/run_evaluation.py"),
+        "--dataset_name", dataset_name,
+        "--predictions_path", predictions_jsonl,
+        "--max_workers", str(num_eval_procs),
+        "--run_id", run_id,
+    ]
+    subprocess.run(run_evals_cmd, check=True, cwd=output_dir)
 
 def make_report(
         dnames,
@@ -125,7 +123,7 @@ def make_report(
     if dnames_workers is None:
         dnames_workers = len(dnames)
     with ThreadPoolExecutor(max_workers=dnames_workers) as executor:
-        executor.map(process_single_dname, dnames, run_ids)
+        list(executor.map(process_single_dname, dnames, run_ids))
 
     print("All reports generated.")
 

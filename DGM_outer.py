@@ -4,7 +4,8 @@ import json
 import math
 import os
 import random
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed, TimeoutError
+import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, ProcessPoolExecutor, TimeoutError, wait
 
 from prompts.self_improvement_prompt import find_selfimprove_eval_logs
 from self_improve_step import self_improve
@@ -279,38 +280,56 @@ def main():
 
         # Run self-improvement processes
         selfimprove_ids = []
-        with ThreadPoolExecutor(max_workers=args.selfimprove_workers) as executor:
-            futures = [
-                executor.submit(
-                    self_improve,
-                    parent_commit=parent_commit,
-                    output_dir=output_dir,
-                    force_rebuild=False,
-                    num_evals=args.num_swe_evals,
-                    post_improve_diagnose=args.post_improve_diagnose,
-                    entry=entry,
-                    test_task_list=swe_issues_sm,
-                    test_more_threshold=None if args.shallow_eval else test_more_threshold,
-                    test_task_list_more=None if args.shallow_eval else swe_issues_med,
-                    polyglot=args.polyglot,
-                    full_eval_threshold=None if args.no_full_eval else get_full_eval_threshold(output_dir, archive),
-                    run_baseline=args.run_baseline,
-                )
-                for parent_commit, entry in selfimprove_entries
-            ]
+        executor = ThreadPoolExecutor(max_workers=args.selfimprove_workers)
+        future_to_job = {
+            executor.submit(
+                self_improve,
+                parent_commit=parent_commit,
+                output_dir=output_dir,
+                force_rebuild=False,
+                num_evals=args.num_swe_evals,
+                post_improve_diagnose=args.post_improve_diagnose,
+                entry=entry,
+                test_task_list=swe_issues_sm,
+                test_more_threshold=None if args.shallow_eval else test_more_threshold,
+                test_task_list_more=None if args.shallow_eval else swe_issues_med,
+                polyglot=args.polyglot,
+                full_eval_threshold=None if args.no_full_eval else get_full_eval_threshold(output_dir, archive),
+                run_baseline=args.run_baseline,
+            ): (parent_commit, entry)
+            for parent_commit, entry in selfimprove_entries
+        }
 
-            for future in as_completed(futures):
-                try:
-                    # Added timeout to avoid hanging indefinitely (1.5 h here)
-                    metadata = future.result(timeout=1.5*60*60)
-                    selfimprove_ids.append(metadata['run_id'])
-                except TimeoutError:
-                    logger.error("Self-improvement attempt timed out.")
-                    future.cancel()  # Optionally cancel the future if it's still running
-                except Exception as e:
-                    import traceback
-                    logger.error(f"Self-improvement step failed: {e}")
-                    logger.error(f"Traceback:\n{traceback.format_exc()}")
+        # Impose a real wall-clock deadline for the generation's self-improve attempts.
+        gen_deadline = time.monotonic() + 1.5 * 60 * 60
+        pending = set(future_to_job)
+        try:
+            while pending:
+                remaining = gen_deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+
+                done, pending = wait(pending, timeout=remaining, return_when=FIRST_COMPLETED)
+                if not done:
+                    break
+
+                for future in done:
+                    try:
+                        metadata = future.result()
+                        selfimprove_ids.append(metadata['run_id'])
+                    except Exception as e:
+                        import traceback
+                        parent_commit, entry = future_to_job[future]
+                        logger.error(f"Self-improvement step failed for parent={parent_commit}, entry={entry}: {e}")
+                        logger.error(f"Traceback:\n{traceback.format_exc()}")
+
+            if pending:
+                for future in pending:
+                    parent_commit, entry = future_to_job[future]
+                    logger.error(f"Self-improvement attempt timed out for parent={parent_commit}, entry={entry}.")
+                    future.cancel()
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
         # Update archive
         logger.info(f"Updating archive for generation {gen_num}")

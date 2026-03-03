@@ -300,126 +300,127 @@ def self_improve(
     image_name = "dgm"
     container_name = f"dgm-container-{run_id}"
     client = docker.from_env()
-    # Remove any existing container with the same name
-    remove_existing_container(client, container_name)
-    # Now create and start the container
-    container = build_dgm_container(
-        client, root_dir, image_name, container_name,
-        force_rebuild=force_rebuild,
-    )
-    if container is None:
-        raise RuntimeError("Failed to start container")
-
-    if polyglot:
-        # remove the swe version of coding_agent.py
-        exec_result = container.exec_run("rm /dgm/coding_agent.py", workdir='/')
-        log_container_output(exec_result)
-        # rename coding_agent_polyglot.py to coding_agent.py
-        exec_result = container.exec_run("mv /dgm/coding_agent_polyglot.py /dgm/coding_agent.py", workdir='/')
-        log_container_output(exec_result)
-        # remove swe-specific files utils/eval_utils.py and utils/swe_log_parsers.py
-        exec_result = container.exec_run("rm /dgm/utils/eval_utils.py", workdir='/')
-        log_container_output(exec_result)
-        exec_result = container.exec_run("rm /dgm/utils/swe_log_parsers.py", workdir='/')
-        log_container_output(exec_result)
-    else:
-        # remove the polyglot version of coding_agent.py
-        exec_result = container.exec_run("rm /dgm/coding_agent_polyglot.py", workdir='/')
-
-    # Find all parent patches and apply them
+    container = None
+    container_cleaned = False
     patch_files = get_model_patch_paths(root_dir, os.path.join(output_dir, '../'), parent_commit)
-    if run_baseline not in ['no_selfimprove']:
-        for patch_file in patch_files:
-            copy_to_container(container, patch_file, '/dgm/parent_patch.txt')
-            exec_result = container.exec_run("/bin/sh -c 'patch -p1 < /dgm/parent_patch.txt'", workdir='/dgm')
-            log_container_output(exec_result)
-            exec_result = container.exec_run("rm /dgm/parent_patch.txt", workdir='/dgm')
-            log_container_output(exec_result)
-
-    # Commit this version of dgm, so that irrelevant changes are not included in the patch
-    exec_result = container.exec_run("git add --all", workdir='/dgm/')
-    log_container_output(exec_result)
-    exec_result = container.exec_run("git -c user.name='user' -c user.email='you@example.com' commit -m 'a nonsense commit message'", workdir='/dgm/')
-    log_container_output(exec_result)
-    exec_result = container.exec_run("git rev-parse HEAD", workdir='/dgm/')
-    log_container_output(exec_result)
-    commit_hash = exec_result.output.decode('utf-8').strip()
-
-    # Install requirements again in case of any changes
-    exec_result = container.exec_run("python -m pip install -r /dgm/requirements.txt", workdir='/')
-    log_container_output(exec_result)
-
-    # Get tasks to improve
-    if entry:
-        safe_log(f"Task to improve: {entry}")
-        problem_statement = diagnose_problem(entry, parent_commit, root_dir, out_dir_base, patch_files=patch_files, polyglot=polyglot)
-        safe_log(f"problem_statement: {problem_statement}")
-    else:
-        safe_log("No entry provided. Exiting.")
-        cleanup_container(container)
-        save_metadata(metadata, output_dir)
-        return metadata
-
-    metadata['entry'] = entry
-    metadata['problem_statement'] = problem_statement
-    # If problem statement is not found, exit
-    if not problem_statement:
-        safe_log("Failed to diagnose the problem statement. Exiting.")
-        cleanup_container(container)
-        save_metadata(metadata, output_dir)
-        return metadata
-
-    # Run self-improvement
-    safe_log("Running self-improvement")
-    chat_history_file_container = "/dgm/self_evo.md"
-    test_description = get_test_description(swerepo=False)
-    env_vars = {
-        "ANTHROPIC_API_KEY": os.getenv('ANTHROPIC_API_KEY'),
-        "AWS_REGION": os.getenv('AWS_REGION'),
-        "AWS_REGION_NAME": os.getenv('AWS_REGION_NAME'),
-        "AWS_ACCESS_KEY_ID": os.getenv('AWS_ACCESS_KEY_ID'),
-        "AWS_SECRET_ACCESS_KEY": os.getenv('AWS_SECRET_ACCESS_KEY'),
-        "OPENAI_API_KEY": os.getenv('OPENAI_API_KEY'),
-        "OPENROUTER_API_KEY": os.getenv('OPENROUTER_API_KEY'),
-    }
-    cmd = [
-        "timeout", "1800",  # 30min timeout
-        "python", "/dgm/coding_agent.py",
-        "--problem_statement", problem_statement,
-        "--git_dir", "/dgm/",
-        "--chat_history_file", chat_history_file_container,
-        "--base_commit", commit_hash,
-        "--outdir", "/dgm/",
-        "--test_description", test_description,
-        "--self_improve",
-    ]
-    exec_result = container.exec_run(cmd, environment=env_vars, workdir='/')
-    log_container_output(exec_result)
-
-    # Copy output files back to host
-    chat_history_file = os.path.join(output_dir, "self_evo.md")
-    copy_from_container(container, chat_history_file_container, chat_history_file)
-    model_patch_file = os.path.join(output_dir, "model_patch.diff")
-    copy_from_container(container, "/dgm/model_patch.diff", model_patch_file)
-
-    # Try reading the patch file to validate it
     try:
-        # Check if patch file exists and is not empty
-        if not os.path.exists(model_patch_file):
-            raise Exception("Model patch file is empty or does not exist")
-        with open(model_patch_file, 'r') as f:
-            patch_content = f.read()
-            if not patch_content.strip():
-                raise Exception("Model patch file is empty")
-    except Exception as e:
-        safe_log(f"Failed to read model patch file: {str(e)}")
-        save_metadata(metadata, output_dir)
-        return metadata
+        # Remove any existing container with the same name
+        remove_existing_container(client, container_name)
+        # Now create and start the container
+        container = build_dgm_container(
+            client, root_dir, image_name, container_name,
+            force_rebuild=force_rebuild,
+        )
+        if container is None:
+            raise RuntimeError("Failed to start container")
 
-    patch_files.append(model_patch_file)
+        if polyglot:
+            # remove the swe version of coding_agent.py
+            exec_result = container.exec_run("rm /dgm/coding_agent.py", workdir='/')
+            log_container_output(exec_result)
+            # rename coding_agent_polyglot.py to coding_agent.py
+            exec_result = container.exec_run("mv /dgm/coding_agent_polyglot.py /dgm/coding_agent.py", workdir='/')
+            log_container_output(exec_result)
+            # remove swe-specific files utils/eval_utils.py and utils/swe_log_parsers.py
+            exec_result = container.exec_run("rm /dgm/utils/eval_utils.py", workdir='/')
+            log_container_output(exec_result)
+            exec_result = container.exec_run("rm /dgm/utils/swe_log_parsers.py", workdir='/')
+            log_container_output(exec_result)
+        else:
+            # remove the polyglot version of coding_agent.py
+            exec_result = container.exec_run("rm /dgm/coding_agent_polyglot.py", workdir='/')
 
-    # Stop and remove the container
-    cleanup_container(container)
+        if run_baseline not in ['no_selfimprove']:
+            for patch_file in patch_files:
+                copy_to_container(container, patch_file, '/dgm/parent_patch.txt')
+                exec_result = container.exec_run("/bin/sh -c 'patch -p1 < /dgm/parent_patch.txt'", workdir='/dgm')
+                log_container_output(exec_result)
+                exec_result = container.exec_run("rm /dgm/parent_patch.txt", workdir='/dgm')
+                log_container_output(exec_result)
+
+        # Commit this version of dgm, so that irrelevant changes are not included in the patch
+        exec_result = container.exec_run("git add --all", workdir='/dgm/')
+        log_container_output(exec_result)
+        exec_result = container.exec_run("git -c user.name='user' -c user.email='you@example.com' commit -m 'a nonsense commit message'", workdir='/dgm/')
+        log_container_output(exec_result)
+        exec_result = container.exec_run("git rev-parse HEAD", workdir='/dgm/')
+        log_container_output(exec_result)
+        commit_hash = exec_result.output.decode('utf-8').strip()
+
+        # Install requirements again in case of any changes
+        exec_result = container.exec_run("python -m pip install -r /dgm/requirements.txt", workdir='/')
+        log_container_output(exec_result)
+
+        # Get tasks to improve
+        if entry:
+            safe_log(f"Task to improve: {entry}")
+            problem_statement = diagnose_problem(entry, parent_commit, root_dir, out_dir_base, patch_files=patch_files, polyglot=polyglot)
+            safe_log(f"problem_statement: {problem_statement}")
+        else:
+            safe_log("No entry provided. Exiting.")
+            save_metadata(metadata, output_dir)
+            return metadata
+
+        metadata['entry'] = entry
+        metadata['problem_statement'] = problem_statement
+        # If problem statement is not found, exit
+        if not problem_statement:
+            safe_log("Failed to diagnose the problem statement. Exiting.")
+            save_metadata(metadata, output_dir)
+            return metadata
+
+        # Run self-improvement
+        safe_log("Running self-improvement")
+        chat_history_file_container = "/dgm/self_evo.md"
+        test_description = get_test_description(swerepo=False)
+        env_vars = {
+            "ANTHROPIC_API_KEY": os.getenv('ANTHROPIC_API_KEY'),
+            "AWS_REGION": os.getenv('AWS_REGION'),
+            "AWS_REGION_NAME": os.getenv('AWS_REGION_NAME'),
+            "AWS_ACCESS_KEY_ID": os.getenv('AWS_ACCESS_KEY_ID'),
+            "AWS_SECRET_ACCESS_KEY": os.getenv('AWS_SECRET_ACCESS_KEY'),
+            "OPENAI_API_KEY": os.getenv('OPENAI_API_KEY'),
+            "OPENROUTER_API_KEY": os.getenv('OPENROUTER_API_KEY'),
+        }
+        cmd = [
+            "timeout", "1800",  # 30min timeout
+            "python", "/dgm/coding_agent.py",
+            "--problem_statement", problem_statement,
+            "--git_dir", "/dgm/",
+            "--chat_history_file", chat_history_file_container,
+            "--base_commit", commit_hash,
+            "--outdir", "/dgm/",
+            "--test_description", test_description,
+            "--self_improve",
+        ]
+        exec_result = container.exec_run(cmd, environment=env_vars, workdir='/')
+        log_container_output(exec_result)
+
+        # Copy output files back to host
+        chat_history_file = os.path.join(output_dir, "self_evo.md")
+        copy_from_container(container, chat_history_file_container, chat_history_file)
+        model_patch_file = os.path.join(output_dir, "model_patch.diff")
+        copy_from_container(container, "/dgm/model_patch.diff", model_patch_file)
+
+        # Try reading the patch file to validate it
+        try:
+            # Check if patch file exists and is not empty
+            if not os.path.exists(model_patch_file):
+                raise Exception("Model patch file is empty or does not exist")
+            with open(model_patch_file, 'r') as f:
+                patch_content = f.read()
+                if not patch_content.strip():
+                    raise Exception("Model patch file is empty")
+        except Exception as e:
+            safe_log(f"Failed to read model patch file: {str(e)}")
+            save_metadata(metadata, output_dir)
+            return metadata
+
+        patch_files.append(model_patch_file)
+    finally:
+        if container is not None and not container_cleaned:
+            cleanup_container(container)
+            container_cleaned = True
 
     # Evaluate the performance of the self-improvement
     model_patch_exists = os.path.exists(model_patch_file)
