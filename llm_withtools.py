@@ -62,6 +62,43 @@ def serialize_tool_output(tool_result):
     except TypeError:
         return str(tool_result)
 
+
+def empty_usage():
+    return {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+    }
+
+
+def merge_usage(total_usage, response_usage):
+    merged = empty_usage()
+    for key in merged:
+        merged[key] = int(total_usage.get(key, 0) or 0) + int(response_usage.get(key, 0) or 0)
+    return merged
+
+
+def extract_response_usage(response):
+    usage = getattr(response, "usage", None)
+    if usage is None and isinstance(response, dict):
+        usage = response.get("usage")
+    if usage is None:
+        return empty_usage()
+
+    if isinstance(usage, dict):
+        input_tokens = usage.get("input_tokens", usage.get("prompt_tokens", 0))
+        output_tokens = usage.get("output_tokens", usage.get("completion_tokens", 0))
+        total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+    else:
+        input_tokens = getattr(usage, "input_tokens", getattr(usage, "prompt_tokens", 0))
+        output_tokens = getattr(usage, "output_tokens", getattr(usage, "completion_tokens", 0))
+        total_tokens = getattr(usage, "total_tokens", input_tokens + output_tokens)
+    return {
+        "input_tokens": int(input_tokens or 0),
+        "output_tokens": int(output_tokens or 0),
+        "total_tokens": int(total_tokens or 0),
+    }
+
 def process_tool_call(tools_dict, tool_name, tool_input):
     try:
         if tool_name in tools_dict:
@@ -370,13 +407,14 @@ def convert_msg_history(msg_history, model=None):
     else:
         return msg_history
 
-def chat_with_agent_manualtools(msg, model, msg_history=None, logging=print):
+def chat_with_agent_manualtools(msg, model, msg_history=None, logging=print, return_usage=False):
     # Construct message
     if msg_history is None:
         msg_history = []
     system_message = f'You are a coding agent.\n\n{get_tooluse_prompt()}'
     new_msg_history = msg_history
 
+    total_usage = empty_usage()
     try:
         # Load all tools
         all_tools = load_all_tools(logging=logging)
@@ -425,6 +463,8 @@ def chat_with_agent_manualtools(msg, model, msg_history=None, logging=print):
         logging(f"Error in chat_with_agent_manualtools: {str(e)}")
         raise
 
+    if return_usage:
+        return new_msg_history, total_usage
     return new_msg_history
 
 def chat_with_agent_claude(
@@ -432,6 +472,7 @@ def chat_with_agent_claude(
         model='bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0',
         msg_history=None,
         logging=print,
+        return_usage=False,
     ):
     # Construct message
     if msg_history is None:
@@ -448,6 +489,7 @@ def chat_with_agent_claude(
         }
     ]
 
+    total_usage = empty_usage()
     try:
         # Create client
         client, client_model = create_client(model)
@@ -466,6 +508,7 @@ def chat_with_agent_claude(
             tools=tools,
             logging=logging,
         )
+        total_usage = merge_usage(total_usage, extract_response_usage(response))
 
         # Check for tool use
         tool_use = check_for_tool_use(response, model=client_model)
@@ -495,6 +538,7 @@ def chat_with_agent_claude(
                 tools=tools,
                 logging=logging,
             )
+            total_usage = merge_usage(total_usage, extract_response_usage(response))
 
             # Check for next tool use
             tool_use = check_for_tool_use(response, model=client_model)
@@ -515,6 +559,8 @@ def chat_with_agent_claude(
         logging(f"Error in chat_with_agent_claude: {str(e)}")
         raise
 
+    if return_usage:
+        return new_msg_history, total_usage
     return new_msg_history
 
 def chat_with_agent_openai(
@@ -522,6 +568,7 @@ def chat_with_agent_openai(
         model=OPENAI_MODEL,
         msg_history=None,
         logging=print,
+        return_usage=False,
     ):
     # Construct message
     if msg_history is None:
@@ -540,6 +587,7 @@ def chat_with_agent_openai(
     ]
     separator = '=' * 10
     logging(f"\n{separator} User Instruction {separator}\n{msg}")
+    total_usage = empty_usage()
     try:
         # Create client
         client, client_model = create_client(model)
@@ -558,6 +606,7 @@ def chat_with_agent_openai(
             tools=tools,
             logging=logging,
         )
+        total_usage = merge_usage(total_usage, extract_response_usage(response))
         logging(f"\n{separator} Agent Response {separator}\n{response}")
 
         # Check for tool use
@@ -589,6 +638,7 @@ def chat_with_agent_openai(
                 tools=tools,
                 logging=logging,
             )
+            total_usage = merge_usage(total_usage, extract_response_usage(response))
 
             # Check for next tool use
             tool_use = check_for_tool_use(response, model=client_model)
@@ -612,6 +662,8 @@ def chat_with_agent_openai(
         logging(f"Error in chat_with_agent_openai: {str(e)}")
         raise
 
+    if return_usage:
+        return new_msg_history, total_usage
     return new_msg_history
 
 def chat_with_agent(
@@ -620,13 +672,23 @@ def chat_with_agent(
     msg_history=None,
     logging=print,
     convert=False,  # Convert the message history to a generic format, so that msg_history can be used across models
+    return_usage=False,
 ):
     if msg_history is None:
         msg_history = []
 
     if 'claude' in model:
         # Claude models
-        new_msg_history = chat_with_agent_claude(msg, model=model, msg_history=msg_history, logging=logging)
+        new_msg_history = chat_with_agent_claude(
+            msg,
+            model=model,
+            msg_history=msg_history,
+            logging=logging,
+            return_usage=return_usage,
+        )
+        usage = None
+        if return_usage:
+            new_msg_history, usage = new_msg_history
         conv_msg_history = convert_msg_history(new_msg_history, model=model)
         logging(conv_msg_history)
         if convert:
@@ -635,18 +697,38 @@ def chat_with_agent(
 
     elif is_openai_tool_model(model):
         # OpenAI models
-        new_msg_history = chat_with_agent_openai(msg, model=model, msg_history=msg_history, logging=logging)
+        new_msg_history = chat_with_agent_openai(
+            msg,
+            model=model,
+            msg_history=msg_history,
+            logging=logging,
+            return_usage=return_usage,
+        )
+        usage = None
+        if return_usage:
+            new_msg_history, usage = new_msg_history
         # Current version does not support cross-model conversion
         # new_msg_history = convert_msg_history(new_msg_history, model=model)
         new_msg_history = msg_history + new_msg_history
 
     else:
         # Models without in-built tool calling
-        new_msg_history = chat_with_agent_manualtools(msg, model=model, msg_history=msg_history, logging=logging)
+        new_msg_history = chat_with_agent_manualtools(
+            msg,
+            model=model,
+            msg_history=msg_history,
+            logging=logging,
+            return_usage=return_usage,
+        )
+        usage = None
+        if return_usage:
+            new_msg_history, usage = new_msg_history
         conv_msg_history = convert_msg_history(new_msg_history, model=model)
         if convert:
             new_msg_history = conv_msg_history
 
+    if return_usage:
+        return new_msg_history, usage or empty_usage()
     return new_msg_history
 
 

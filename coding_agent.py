@@ -83,6 +83,11 @@ class AgenticSystem:
         self.self_improve = self_improve
         self.instance_id = instance_id if not self_improve else 'dgm'
         self.code_model = OPENAI_MODEL
+        self.last_token_usage = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+        }
 
         # Initialize logger and store it in thread-local storage
         self.logger = setup_logger(chat_history_file)
@@ -166,7 +171,15 @@ Your task is to run the regression tests in the {self.git_tempdir} directory to 
 
 Your task is to make changes to the files in the {self.git_tempdir} directory to address the <problem_description>. I have already taken care of the required dependencies.
 """
-        new_msg_history = chat_with_agent(instruction, model=self.code_model, msg_history=[], logging=safe_log)
+        new_msg_history, token_usage = chat_with_agent(
+            instruction,
+            model=self.code_model,
+            msg_history=[],
+            logging=safe_log,
+            return_usage=True,
+        )
+        self.last_token_usage = token_usage
+        return new_msg_history
 
 def main():
     parser = argparse.ArgumentParser(description='Process repository with an agentic system.')
@@ -199,6 +212,11 @@ def main():
     model_patch_outfile = os.path.join(args.outdir, 'model_patch.diff') if args.outdir else 'model_patch.diff'
     with open(model_patch_outfile, 'w') as f:
         f.write(model_patch)
+
+    token_usage_outfile = os.path.join(args.outdir, 'token_usage.json') if args.outdir else 'token_usage.json'
+    with open(token_usage_outfile, 'w') as f:
+        import json
+        json.dump(agentic_system.last_token_usage, f, indent=2)
 
 if __name__ == "__main__":
     main()

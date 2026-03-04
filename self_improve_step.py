@@ -14,7 +14,12 @@ from prompts.self_improvement_prompt import get_diagnose_prompt_polyglot, get_di
 from prompts.diagnose_improvement_prompt import get_diagnose_improvement_prompt
 from prompts.testrepo_prompt import get_test_description
 from polyglot.harness import harness as polyglot_harness
-from utils.evo_utils import get_model_patch_paths, get_all_performance, is_compiled_self_improve
+from utils.evo_utils import (
+    get_all_performance,
+    get_model_patch_paths,
+    get_model_patch_paths_from_agent_dir,
+    is_compiled_self_improve,
+)
 from utils.docker_utils import (
     build_dgm_container,
     cleanup_container,
@@ -125,6 +130,375 @@ def save_metadata(metadata, output_dir):
     metadata_file = os.path.join(output_dir, "metadata.json")
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, indent=4)
+
+
+def load_metadata(output_dir):
+    metadata_file = os.path.join(output_dir, "metadata.json")
+    if not os.path.exists(metadata_file):
+        return {}
+    with open(metadata_file, "r") as f:
+        return json.load(f)
+
+
+def _extract_total_tokens(token_usage):
+    if not isinstance(token_usage, dict):
+        return 0
+    return int(token_usage.get("total_tokens", 0) or 0)
+
+
+def _load_token_usage(token_usage_file):
+    if not os.path.exists(token_usage_file):
+        return {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+        }
+    with open(token_usage_file, "r") as f:
+        token_usage = json.load(f)
+    token_usage.setdefault("input_tokens", 0)
+    token_usage.setdefault("output_tokens", 0)
+    token_usage.setdefault("total_tokens", 0)
+    return token_usage
+
+
+def _append_budget_history(metadata, record):
+    budget_history = metadata.setdefault("budget_history", [])
+    budget_history.append(record)
+
+
+def _run_verified_increment(
+        benchmark_name,
+        model_name_or_path,
+        patch_files,
+        num_evals,
+        output_dir,
+        run_id,
+        task_list,
+        subset_name,
+    ):
+    dnames = verified_harness(
+        test_task_list=task_list,
+        num_samples=-1,
+        max_workers=min(5, len(task_list)),
+        model_name_or_path=model_name_or_path,
+        model_patch_paths=patch_files,
+        num_evals=num_evals,
+        num_evals_parallel=5,
+        pred_dname=os.path.join(output_dir, "predictions"),
+        benchmark_name=benchmark_name,
+    )
+    make_verified_report(
+        dnames,
+        run_ids=[f"{run_id}_{subset_name}_{i}" for i in range(len(dnames))],
+        benchmark_name=benchmark_name,
+        dataset_name=get_dataset_source(benchmark_name),
+        output_dir=output_dir,
+        dnames_workers=5,
+    )
+    return dnames
+
+
+def _run_polyglot_increment(
+        model_name_or_path,
+        patch_files,
+        num_evals,
+        output_dir,
+        task_list,
+    ):
+    return polyglot_harness(
+        test_task_list=task_list,
+        num_samples=-1,
+        max_workers=min(10, len(task_list)),
+        model_name_or_path=model_name_or_path,
+        model_patch_paths=patch_files,
+        num_evals=num_evals,
+        num_evals_parallel=min(5, num_evals),
+        pred_dname=os.path.join(output_dir, "predictions"),
+        output_dir=output_dir,
+    )
+
+
+def finalize_child_metadata(
+        run_id,
+        parent_output_dir,
+        post_improve_diagnose=False,
+    ):
+    root_dir = os.path.abspath('./')
+    child_output_dir = os.path.join(root_dir, parent_output_dir, run_id)
+    metadata = load_metadata(child_output_dir)
+    if not metadata:
+        return metadata
+
+    metadata['is_compiled'] = is_compiled_self_improve(metadata)
+    if (
+        post_improve_diagnose and
+        metadata['is_compiled'] and
+        metadata.get('entry') and
+        metadata.get('model_patch_exists') and
+        metadata.get('model_patch_notempty')
+    ):
+        safe_log("Diagnosing the self-improvement")
+        model_patch_file = os.path.join(child_output_dir, "model_patch.diff")
+        patch_files = get_model_patch_paths_from_agent_dir(child_output_dir)
+        improvement_diagnosis = diagnose_improvement(
+            metadata['entry'],
+            metadata['parent_commit'],
+            root_dir,
+            model_patch_file,
+            parent_output_dir,
+            run_id,
+            patch_files=patch_files[:-1],
+        )
+        metadata['improvement_diagnosis'] = improvement_diagnosis
+    elif post_improve_diagnose:
+        metadata['improvement_diagnosis'] = "Fail to complied. Ignore this."
+
+    save_metadata(metadata, child_output_dir)
+    return metadata
+
+
+def evaluate_existing_child(
+        run_id,
+        parent_output_dir,
+        num_evals,
+        benchmark_name,
+        task_list,
+        subset_name,
+        budget_name,
+        budget_size,
+        search_strategy='dgm',
+        rung=None,
+    ):
+    benchmark = get_benchmark(benchmark_name)
+    root_dir = os.path.abspath('./')
+    child_output_dir = os.path.join(root_dir, parent_output_dir, run_id)
+    metadata = load_metadata(child_output_dir)
+    if not metadata:
+        raise FileNotFoundError(f"Missing metadata.json for child {run_id}")
+
+    entry = metadata.get("entry")
+    model_patch_file = os.path.join(child_output_dir, "model_patch.diff")
+    if not (os.path.exists(model_patch_file) and os.path.getsize(model_patch_file) > 0):
+        metadata['model_patch_exists'] = os.path.exists(model_patch_file)
+        metadata['model_patch_notempty'] = os.path.exists(model_patch_file) and os.path.getsize(model_patch_file) > 0
+        save_metadata(metadata, child_output_dir)
+        return metadata
+
+    patch_files = get_model_patch_paths_from_agent_dir(child_output_dir)
+    metadata['search_strategy'] = search_strategy
+    metadata['scheduler_name'] = search_strategy
+    metadata['rung'] = rung
+    task_list = [entry] if task_list is None else task_list
+    model_name_or_path = run_id
+
+    if benchmark.kind != "polyglot":
+        dnames = _run_verified_increment(
+            benchmark_name,
+            model_name_or_path,
+            patch_files,
+            num_evals,
+            child_output_dir,
+            run_id,
+            task_list,
+            subset_name,
+        )
+    else:
+        dnames = _run_polyglot_increment(
+            model_name_or_path,
+            patch_files,
+            num_evals,
+            child_output_dir,
+            task_list,
+        )
+
+    previous_dirs = metadata.get('evaluation_dirs', [])
+    previous_subset_names = metadata.get('evaluated_subset_names', [])
+    all_evaluation_dirs = previous_dirs + [str(dn) for dn in dnames]
+    evaluated_subset_names = previous_subset_names + [subset_name]
+    _, overall_performance = _apply_benchmark_metadata(
+        metadata,
+        benchmark_name,
+        child_output_dir,
+        model_name_or_path,
+        all_evaluation_dirs,
+        evaluated_subset_names,
+        budget_name,
+        budget_size,
+    )
+    metadata['resolve_rate'] = overall_performance.get('accuracy_score', 0) if overall_performance else 0
+    _append_budget_history(metadata, {
+        "budget_name": budget_name,
+        "subset_name": subset_name,
+        "tasks_added": len(task_list),
+        "cumulative_budget_size": budget_size,
+        "resolve_rate": metadata['resolve_rate'],
+        "rung": rung,
+    })
+    save_metadata(metadata, child_output_dir)
+    return metadata
+
+
+def generate_child_patch(
+    parent_commit='initial',
+    output_dir='output_selfimprove/',
+    force_rebuild=False,
+    entry=None,
+    benchmark_name='swe_verified_mini',
+    search_strategy='dgm',
+    rung=None,
+):
+    global dataset
+    benchmark = get_benchmark(benchmark_name)
+    dataset = load_benchmark_dataset(benchmark_name)
+
+    metadata = {}
+    root_dir = os.path.abspath('./')
+    run_id = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    out_dir_base = output_dir
+    child_output_dir = os.path.join(root_dir, f"{output_dir}/{run_id}/")
+    os.makedirs(child_output_dir, exist_ok=True)
+    metadata['run_id'] = run_id
+    metadata['parent_commit'] = parent_commit
+    metadata['benchmark_name'] = benchmark_name
+    metadata['dataset_source'] = get_dataset_source(benchmark_name)
+    metadata['search_strategy'] = search_strategy
+    metadata['scheduler_name'] = search_strategy
+    metadata['rung'] = rung
+
+    setup_logger(os.path.join(child_output_dir, "self_improve.log"))
+
+    image_name = "dgm"
+    container_name = f"dgm-container-{run_id}"
+    client = docker.from_env()
+    container = None
+    container_cleaned = False
+    patch_files = get_model_patch_paths(root_dir, os.path.join(child_output_dir, '../'), parent_commit)
+    try:
+        remove_existing_container(client, container_name)
+        container = build_dgm_container(
+            client, root_dir, image_name, container_name,
+            force_rebuild=force_rebuild,
+        )
+        if container is None:
+            raise RuntimeError("Failed to start container")
+
+        if benchmark.kind == "polyglot":
+            exec_result = container.exec_run("rm /dgm/coding_agent.py", workdir='/')
+            log_container_output(exec_result)
+            exec_result = container.exec_run("mv /dgm/coding_agent_polyglot.py /dgm/coding_agent.py", workdir='/')
+            log_container_output(exec_result)
+            exec_result = container.exec_run("rm /dgm/utils/eval_utils.py", workdir='/')
+            log_container_output(exec_result)
+            exec_result = container.exec_run("rm /dgm/utils/swe_log_parsers.py", workdir='/')
+            log_container_output(exec_result)
+        else:
+            exec_result = container.exec_run("rm /dgm/coding_agent_polyglot.py", workdir='/')
+            log_container_output(exec_result)
+
+        for patch_file in patch_files:
+            copy_to_container(container, patch_file, '/dgm/parent_patch.txt')
+            exec_result = container.exec_run("/bin/sh -c 'patch -p1 < /dgm/parent_patch.txt'", workdir='/dgm')
+            log_container_output(exec_result)
+            exec_result = container.exec_run("rm /dgm/parent_patch.txt", workdir='/dgm')
+            log_container_output(exec_result)
+
+        exec_result = container.exec_run("git add --all", workdir='/dgm/')
+        log_container_output(exec_result)
+        exec_result = container.exec_run("git -c user.name='user' -c user.email='you@example.com' commit -m 'a nonsense commit message'", workdir='/dgm/')
+        log_container_output(exec_result)
+        exec_result = container.exec_run("git rev-parse HEAD", workdir='/dgm/')
+        log_container_output(exec_result)
+        commit_hash = exec_result.output.decode('utf-8').strip()
+
+        exec_result = container.exec_run("python -m pip install -r /dgm/requirements.txt", workdir='/')
+        log_container_output(exec_result)
+
+        if entry:
+            safe_log(f"Task to improve: {entry}")
+            problem_statement = diagnose_problem(
+                entry,
+                parent_commit,
+                root_dir,
+                out_dir_base,
+                patch_files=patch_files,
+                benchmark_name=benchmark_name,
+            )
+            safe_log(f"problem_statement: {problem_statement}")
+        else:
+            safe_log("No entry provided. Exiting.")
+            save_metadata(metadata, child_output_dir)
+            return metadata
+
+        metadata['entry'] = entry
+        metadata['problem_statement'] = problem_statement
+        if not problem_statement:
+            safe_log("Failed to diagnose the problem statement. Exiting.")
+            save_metadata(metadata, child_output_dir)
+            return metadata
+
+        safe_log("Running self-improvement")
+        chat_history_file_container = "/dgm/self_evo.md"
+        test_description = get_test_description(swerepo=False)
+        env_vars = {
+            "ANTHROPIC_API_KEY": os.getenv('ANTHROPIC_API_KEY'),
+            "AWS_REGION": os.getenv('AWS_REGION'),
+            "AWS_REGION_NAME": os.getenv('AWS_REGION_NAME'),
+            "AWS_ACCESS_KEY_ID": os.getenv('AWS_ACCESS_KEY_ID'),
+            "AWS_SECRET_ACCESS_KEY": os.getenv('AWS_SECRET_ACCESS_KEY'),
+            "OPENAI_API_KEY": os.getenv('OPENAI_API_KEY'),
+            "OPENROUTER_API_KEY": os.getenv('OPENROUTER_API_KEY'),
+        }
+        cmd = [
+            "timeout", "1800",
+            "python", "/dgm/coding_agent.py",
+            "--problem_statement", problem_statement,
+            "--git_dir", "/dgm/",
+            "--chat_history_file", chat_history_file_container,
+            "--base_commit", commit_hash,
+            "--outdir", "/dgm/",
+            "--test_description", test_description,
+            "--self_improve",
+        ]
+        exec_result = container.exec_run(cmd, environment=env_vars, workdir='/')
+        log_container_output(exec_result)
+
+        chat_history_file = os.path.join(child_output_dir, "self_evo.md")
+        copy_from_container(container, chat_history_file_container, chat_history_file)
+        model_patch_file = os.path.join(child_output_dir, "model_patch.diff")
+        copy_from_container(container, "/dgm/model_patch.diff", model_patch_file)
+        token_usage_file = os.path.join(child_output_dir, "token_usage.json")
+        try:
+            copy_from_container(container, "/dgm/token_usage.json", token_usage_file)
+        except FileNotFoundError:
+            pass
+
+        try:
+            if not os.path.exists(model_patch_file):
+                raise Exception("Model patch file is empty or does not exist")
+            with open(model_patch_file, 'r') as f:
+                patch_content = f.read()
+                if not patch_content.strip():
+                    raise Exception("Model patch file is empty")
+        except Exception as e:
+            safe_log(f"Failed to read model patch file: {str(e)}")
+            metadata['model_patch_exists'] = os.path.exists(model_patch_file)
+            metadata['model_patch_notempty'] = False
+            metadata['token_usage'] = _load_token_usage(token_usage_file)
+            metadata['token_usage_total'] = _extract_total_tokens(metadata['token_usage'])
+            save_metadata(metadata, child_output_dir)
+            return metadata
+
+        metadata['model_patch_exists'] = True
+        metadata['model_patch_notempty'] = True
+        metadata['token_usage'] = _load_token_usage(token_usage_file)
+        metadata['token_usage_total'] = _extract_total_tokens(metadata['token_usage'])
+        metadata['budget_history'] = []
+        save_metadata(metadata, child_output_dir)
+        return metadata
+    finally:
+        if container is not None and not container_cleaned:
+            cleanup_container(container)
+            container_cleaned = True
 
 def _apply_benchmark_metadata(
         metadata,
@@ -370,205 +744,105 @@ def self_improve(
     search_strategy='dgm',
     rung=None,
 ):  
-
-    global dataset
     benchmark = get_benchmark(benchmark_name)
-    dataset = load_benchmark_dataset(benchmark_name)
+    if run_baseline == 'no_selfimprove':
+        parent_commit = 'initial'
 
-    # Variables for this self-improvement attempt
-    metadata = {}
-    root_dir = os.path.abspath('./')  # root_dir should be /dgm
-    run_id = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-    out_dir_base = output_dir  # out_dir_base should be /dgm/output_selfimprove/ or /dgm/output_dgm/{dgm_run_id}/
-    output_dir = os.path.join(root_dir, f"{output_dir}/{run_id}/")
-    os.makedirs(output_dir, exist_ok=True)
-    metadata['run_id'] = run_id
-    metadata['parent_commit'] = parent_commit
-    metadata['benchmark_name'] = benchmark_name
-    metadata['dataset_source'] = get_dataset_source(benchmark_name)
-    metadata['search_strategy'] = search_strategy
-    metadata['rung'] = rung
+    metadata = generate_child_patch(
+        parent_commit=parent_commit,
+        output_dir=output_dir,
+        force_rebuild=force_rebuild,
+        entry=entry,
+        benchmark_name=benchmark_name,
+        search_strategy=search_strategy,
+        rung=rung,
+    )
+    run_id = metadata['run_id']
+    if not (metadata.get('model_patch_exists') and metadata.get('model_patch_notempty')):
+        return metadata
 
-    # Set up logger
-    logger = setup_logger(os.path.join(output_dir, "self_improve.log"))
+    stage_task_list = [entry] if test_task_list is None else test_task_list
+    metadata = evaluate_existing_child(
+        run_id,
+        output_dir,
+        num_evals,
+        benchmark_name,
+        stage_task_list,
+        subset_name="stage_small",
+        budget_name="stage_small",
+        budget_size=len(stage_task_list),
+        search_strategy=search_strategy,
+        rung=rung,
+    )
 
-    # Create and start the Docker container
-    image_name = "dgm"
-    container_name = f"dgm-container-{run_id}"
-    client = docker.from_env()
-    container = None
-    container_cleaned = False
-    patch_files = get_model_patch_paths(root_dir, os.path.join(output_dir, '../'), parent_commit)
-    try:
-        # Remove any existing container with the same name
-        remove_existing_container(client, container_name)
-        # Now create and start the container
-        container = build_dgm_container(
-            client, root_dir, image_name, container_name,
-            force_rebuild=force_rebuild,
+    overall_performance = metadata.get('overall_performance') or {}
+    if (
+        benchmark.kind != "polyglot" and
+        test_more_threshold is not None and
+        test_task_list_more is not None and
+        overall_performance.get('total_resolved_instances', 0) >= len(stage_task_list) * test_more_threshold
+    ):
+        metadata = evaluate_existing_child(
+            run_id,
+            output_dir,
+            num_evals,
+            benchmark_name,
+            test_task_list_more,
+            subset_name="stage_medium",
+            budget_name="stage_medium",
+            budget_size=len(stage_task_list) + len(test_task_list_more),
+            search_strategy=search_strategy,
+            rung=rung,
         )
-        if container is None:
-            raise RuntimeError("Failed to start container")
+        overall_performance = metadata.get('overall_performance') or {}
+    elif (
+        benchmark.kind == "polyglot" and
+        test_more_threshold is not None and
+        test_task_list_more is not None and
+        overall_performance.get('total_resolved_instances', 0) >= len(stage_task_list) * test_more_threshold
+    ):
+        metadata = evaluate_existing_child(
+            run_id,
+            output_dir,
+            num_evals,
+            benchmark_name,
+            test_task_list_more,
+            subset_name="stage_medium",
+            budget_name="stage_medium",
+            budget_size=len(stage_task_list) + len(test_task_list_more),
+            search_strategy=search_strategy,
+            rung=rung,
+        )
+        overall_performance = metadata.get('overall_performance') or {}
 
-        if benchmark.kind == "polyglot":
-            # remove the swe version of coding_agent.py
-            exec_result = container.exec_run("rm /dgm/coding_agent.py", workdir='/')
-            log_container_output(exec_result)
-            # rename coding_agent_polyglot.py to coding_agent.py
-            exec_result = container.exec_run("mv /dgm/coding_agent_polyglot.py /dgm/coding_agent.py", workdir='/')
-            log_container_output(exec_result)
-            # remove swe-specific files utils/eval_utils.py and utils/swe_log_parsers.py
-            exec_result = container.exec_run("rm /dgm/utils/eval_utils.py", workdir='/')
-            log_container_output(exec_result)
-            exec_result = container.exec_run("rm /dgm/utils/swe_log_parsers.py", workdir='/')
-            log_container_output(exec_result)
-        else:
-            # remove the polyglot version of coding_agent.py
-            exec_result = container.exec_run("rm /dgm/coding_agent_polyglot.py", workdir='/')
+    if (
+        benchmark.kind != "polyglot" and
+        full_eval_threshold is not None and
+        final_eval_task_list is not None and
+        overall_performance.get('accuracy_score', 0) >= full_eval_threshold
+    ):
+        cumulative_budget = len(stage_task_list)
+        if test_task_list_more is not None and metadata.get('budget_name') == 'stage_medium':
+            cumulative_budget += len(test_task_list_more)
+        cumulative_budget += len(final_eval_task_list)
+        metadata = evaluate_existing_child(
+            run_id,
+            output_dir,
+            num_evals,
+            benchmark_name,
+            final_eval_task_list,
+            subset_name="stage_full",
+            budget_name="stage_full",
+            budget_size=cumulative_budget,
+            search_strategy=search_strategy,
+            rung=rung,
+        )
 
-        if run_baseline not in ['no_selfimprove']:
-            for patch_file in patch_files:
-                copy_to_container(container, patch_file, '/dgm/parent_patch.txt')
-                exec_result = container.exec_run("/bin/sh -c 'patch -p1 < /dgm/parent_patch.txt'", workdir='/dgm')
-                log_container_output(exec_result)
-                exec_result = container.exec_run("rm /dgm/parent_patch.txt", workdir='/dgm')
-                log_container_output(exec_result)
-
-        # Commit this version of dgm, so that irrelevant changes are not included in the patch
-        exec_result = container.exec_run("git add --all", workdir='/dgm/')
-        log_container_output(exec_result)
-        exec_result = container.exec_run("git -c user.name='user' -c user.email='you@example.com' commit -m 'a nonsense commit message'", workdir='/dgm/')
-        log_container_output(exec_result)
-        exec_result = container.exec_run("git rev-parse HEAD", workdir='/dgm/')
-        log_container_output(exec_result)
-        commit_hash = exec_result.output.decode('utf-8').strip()
-
-        # Install requirements again in case of any changes
-        exec_result = container.exec_run("python -m pip install -r /dgm/requirements.txt", workdir='/')
-        log_container_output(exec_result)
-
-        # Get tasks to improve
-        if entry:
-            safe_log(f"Task to improve: {entry}")
-            problem_statement = diagnose_problem(
-                entry,
-                parent_commit,
-                root_dir,
-                out_dir_base,
-                patch_files=patch_files,
-                benchmark_name=benchmark_name,
-            )
-            safe_log(f"problem_statement: {problem_statement}")
-        else:
-            safe_log("No entry provided. Exiting.")
-            save_metadata(metadata, output_dir)
-            return metadata
-
-        metadata['entry'] = entry
-        metadata['problem_statement'] = problem_statement
-        # If problem statement is not found, exit
-        if not problem_statement:
-            safe_log("Failed to diagnose the problem statement. Exiting.")
-            save_metadata(metadata, output_dir)
-            return metadata
-
-        # Run self-improvement
-        safe_log("Running self-improvement")
-        chat_history_file_container = "/dgm/self_evo.md"
-        test_description = get_test_description(swerepo=False)
-        env_vars = {
-            "ANTHROPIC_API_KEY": os.getenv('ANTHROPIC_API_KEY'),
-            "AWS_REGION": os.getenv('AWS_REGION'),
-            "AWS_REGION_NAME": os.getenv('AWS_REGION_NAME'),
-            "AWS_ACCESS_KEY_ID": os.getenv('AWS_ACCESS_KEY_ID'),
-            "AWS_SECRET_ACCESS_KEY": os.getenv('AWS_SECRET_ACCESS_KEY'),
-            "OPENAI_API_KEY": os.getenv('OPENAI_API_KEY'),
-            "OPENROUTER_API_KEY": os.getenv('OPENROUTER_API_KEY'),
-        }
-        cmd = [
-            "timeout", "1800",  # 30min timeout
-            "python", "/dgm/coding_agent.py",
-            "--problem_statement", problem_statement,
-            "--git_dir", "/dgm/",
-            "--chat_history_file", chat_history_file_container,
-            "--base_commit", commit_hash,
-            "--outdir", "/dgm/",
-            "--test_description", test_description,
-            "--self_improve",
-        ]
-        exec_result = container.exec_run(cmd, environment=env_vars, workdir='/')
-        log_container_output(exec_result)
-
-        # Copy output files back to host
-        chat_history_file = os.path.join(output_dir, "self_evo.md")
-        copy_from_container(container, chat_history_file_container, chat_history_file)
-        model_patch_file = os.path.join(output_dir, "model_patch.diff")
-        copy_from_container(container, "/dgm/model_patch.diff", model_patch_file)
-
-        # Try reading the patch file to validate it
-        try:
-            # Check if patch file exists and is not empty
-            if not os.path.exists(model_patch_file):
-                raise Exception("Model patch file is empty or does not exist")
-            with open(model_patch_file, 'r') as f:
-                patch_content = f.read()
-                if not patch_content.strip():
-                    raise Exception("Model patch file is empty")
-        except Exception as e:
-            safe_log(f"Failed to read model patch file: {str(e)}")
-            save_metadata(metadata, output_dir)
-            return metadata
-
-        patch_files.append(model_patch_file)
-    finally:
-        if container is not None and not container_cleaned:
-            cleanup_container(container)
-            container_cleaned = True
-
-    # Evaluate the performance of the self-improvement
-    model_patch_exists = os.path.exists(model_patch_file)
-    metadata['model_patch_exists'] = model_patch_exists
-    model_patch_notempty = os.path.getsize(model_patch_file) > 0
-    metadata['model_patch_notempty'] = model_patch_notempty
-    model_name_or_path = run_id
-    if model_patch_exists and model_patch_notempty:
-        try:
-            if benchmark.kind != "polyglot":
-                run_harness_verified(
-                    benchmark_name,
-                    entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id,
-                    test_more_threshold, test_task_list, test_task_list_more,
-                    full_eval_threshold=full_eval_threshold,
-                    final_eval_task_list=final_eval_task_list,
-                )
-            else:
-                run_harness_polyglot(
-                    benchmark_name,
-                    entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id,
-                    test_more_threshold, test_task_list, test_task_list_more,
-                )
-        except Exception as e:
-            safe_log(f"Error while evaluating the self-improvement: {e}")
-
-    # Post-self-improvement diagnosis
-    if post_improve_diagnose:
-        safe_log("Diagnosing the self-improvement")
-        metadata['is_compiled'] = is_compiled_self_improve(metadata)
-        if metadata['is_compiled']:
-            safe_log("The self-improvement succeed to be complied")
-            improvement_diagnosis = diagnose_improvement(
-                entry, parent_commit, root_dir,
-                model_patch_file, out_dir_base, run_id,
-                patch_files=patch_files,
-            )
-            metadata['improvement_diagnosis'] = improvement_diagnosis
-            safe_log(f"Improvement diagnosis: {improvement_diagnosis}")
-        else:
-            safe_log("The self-improvement fail to be complied")
-            metadata['improvement_diagnosis'] = "Fail to complied. Ignore this."
-
-    # Save metadata of this self-improvement attempt
-    save_metadata(metadata, output_dir)
+    metadata = finalize_child_metadata(
+        run_id,
+        output_dir,
+        post_improve_diagnose=post_improve_diagnose,
+    )
     return metadata
 
 def main():

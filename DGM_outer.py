@@ -6,11 +6,10 @@ import os
 import random
 import shutil
 import time
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 from benchmarks.config import BENCHMARKS, get_benchmark, get_cumulative_stage_task_counts, load_benchmark_subset
 from prompts.self_improvement_prompt import find_selfimprove_eval_logs
-from self_improve_step import self_improve
+from schedulers import BaselineScheduler, HyperbandScheduler
 from utils.common_utils import load_json_file
 from utils.docker_utils import setup_logger
 from utils.evo_utils import load_dgm_metadata, is_compiled_self_improve
@@ -56,11 +55,12 @@ def any_exceeding_context_length(output_dir, commit_id, instance_ids):
             return True
     return False
 
-def choose_selfimproves(output_dir, archive, selfimprove_size, method='random', run_baseline=None, benchmark_name='swe_verified_mini'):
+def choose_selfimproves(output_dir, archive, selfimprove_size, method='random', run_baseline=None, benchmark_name='swe_verified_mini', rng=None):
     """
     Choose self-improve attempts for the current generation.
     """
     selfimprove_entries = []
+    rng = rng or random
 
     # Get parent candidates
     candidates = {}
@@ -96,7 +96,7 @@ def choose_selfimproves(output_dir, archive, selfimprove_size, method='random', 
         scores = [1 / (1 + math.exp(-10*(score-0.5))) for score in scores]
         probabilities = [score / sum(scores) for score in scores]
         print(commits)
-        parent_commits = random.choices(commits, probabilities, k=selfimprove_size)
+        parent_commits = rng.choices(commits, probabilities, k=selfimprove_size)
     elif method == 'score_child_prop':
         # Choose parents based on score and the number of children
         commits = list(candidates.keys())
@@ -106,16 +106,16 @@ def choose_selfimproves(output_dir, archive, selfimprove_size, method='random', 
         children_counts = [1 / (1 + count) for count in children_counts]
         probabilities = [score * count for score, count in zip(scores, children_counts)]
         probabilities = [prob / sum(probabilities) for prob in probabilities]
-        parent_commits = random.choices(commits, probabilities, k=selfimprove_size)
+        parent_commits = rng.choices(commits, probabilities, k=selfimprove_size)
     elif method == 'best':
         # Choose parents with the best score
         sorted_commits = sorted(candidates, key=lambda x: candidates[x]['accuracy_score'], reverse=True)
         parent_commits = sorted_commits[:min(selfimprove_size, len(sorted_commits))]
         if len(parent_commits) < selfimprove_size:
-            parent_commits.extend(random.choices(parent_commits, k=selfimprove_size - len(parent_commits)))
+            parent_commits.extend(rng.choices(parent_commits, k=selfimprove_size - len(parent_commits)))
     else:
         # Choose parents randomly
-        parent_commits = random.choices(list(candidates.keys()), k=selfimprove_size)
+        parent_commits = rng.choices(list(candidates.keys()), k=selfimprove_size)
 
     benchmark = get_benchmark(benchmark_name)
     is_polyglot = benchmark.kind == "polyglot"
@@ -134,20 +134,20 @@ def choose_selfimproves(output_dir, archive, selfimprove_size, method='random', 
             num_total_ids = len(empty_ids) + len(resolved_ids) + len(unresolved_ids)
 
             # Solve empty patches
-            if len(empty_ids) >= 0.1 * num_total_ids and random.random() < 0.25:
+            if len(empty_ids) >= 0.1 * num_total_ids and rng.random() < 0.25:
                 entry = 'solve_empty_patches'
                 selfimprove_entries.append((parent_commit, entry))
                 continue
 
             # Solve stochasticity
-            if random.random() < 0.25:
+            if rng.random() < 0.25:
                 entry = 'solve_stochasticity'
                 selfimprove_entries.append((parent_commit, entry))
                 continue
 
             # Solve context length
             if any_exceeding_context_length(output_dir, parent_commit, empty_ids + unresolved_ids) and \
-                random.random() < 0.25:
+                rng.random() < 0.25:
                 entry = 'solve_contextlength'
                 selfimprove_entries.append((parent_commit, entry))
                 continue
@@ -156,7 +156,7 @@ def choose_selfimproves(output_dir, archive, selfimprove_size, method='random', 
             if not unresolved_ids:
                 continue
             entry_ids = unresolved_ids
-        entry = random.choice(entry_ids)
+        entry = rng.choice(entry_ids)
         selfimprove_entries.append((parent_commit, entry))
 
     return selfimprove_entries
@@ -229,6 +229,15 @@ def get_full_eval_threshold(output_dir, archive, benchmark_name):
 
     return threshold
 
+
+def parse_budget_list(raw_value):
+    values = [int(part.strip()) for part in raw_value.split(',') if part.strip()]
+    if not values:
+        raise argparse.ArgumentTypeError("Expected a comma-separated list of positive integers.")
+    if sorted(values) != values or any(value <= 0 for value in values):
+        raise argparse.ArgumentTypeError("Hyperband budgets must be positive integers in ascending order.")
+    return values
+
 def main():
     parser = argparse.ArgumentParser(description="Darwin Godel Machine!")
     parser.add_argument(
@@ -254,6 +263,12 @@ def main():
     parser.add_argument("--shallow_eval", default=False, action='store_true', help="Run only the first-stage benchmark evaluation for each self-improve attempt.")
     parser.add_argument("--eval_noise", type=float, default=0.1, help="Noise leeway for evaluation.")
     parser.add_argument("--skip_final_eval", default=False, action='store_true', help="Do not run the final evaluation stage even if a node qualifies.")
+    parser.add_argument("--scheduler", type=str, default="baseline", choices=["baseline", "hyperband"], help="Scheduler to use for child evaluation.")
+    parser.add_argument("--seed", type=int, default=0, help="Base random seed for reproducible parent/task selection.")
+    parser.add_argument("--generation_task_budget_total", type=int, default=None, help="Optional total task-evaluation budget per generation.")
+    parser.add_argument("--hyperband_eta", type=int, default=5, help="Hyperband reduction factor.")
+    parser.add_argument("--hyperband_budgets", type=parse_budget_list, default=[2, 10, 50], help="Comma-separated cumulative task budgets for Hyperband, e.g. 2,10,50.")
+    parser.add_argument("--hyperband_initial_children", type=int, default=None, help="Override the number of initial Hyperband children.")
     # baselines
     parser.add_argument("--run_baseline", type=str, default=None, choices=['no_selfimprove', 'no_darwin'], help="Baseline to run.")
     args = parser.parse_args()
@@ -277,94 +292,85 @@ def main():
     final_stage_issues = load_benchmark_subset(args.benchmark, stage_subset_names[2]) if len(stage_subset_names) > 2 else None
     expected_task_counts = get_cumulative_stage_task_counts(args.benchmark)
 
+    if args.scheduler == "hyperband" and args.benchmark != "swe_verified_mini":
+        raise ValueError("Hyperband mode is currently implemented for swe_verified_mini.")
+
     # Set up logger
     logger = setup_logger(os.path.join(output_dir, "dgm_outer.log"))
     logger.info(f"Starting DGM run {run_id} with arguments: {vars(args)}")
     logger.info(f"Archive: {archive}")
-    test_more_threshold = 0.4
+    if args.scheduler == "baseline":
+        scheduler = BaselineScheduler(
+            args,
+            benchmark,
+            logger,
+            stage_small_issues,
+            stage_medium_issues,
+            final_stage_issues,
+            expected_task_counts=[expected_task_counts[0]] if args.shallow_eval else expected_task_counts,
+        )
+    else:
+        scheduler = HyperbandScheduler(args, benchmark, logger)
+
     # Run the DGM
     for gen_num in range(start_gen_num, args.max_generation):
+        generation_seed = args.seed + gen_num
+        generation_rng = random.Random(generation_seed)
+        generation_start = time.time()
+        generation_budget_total = args.generation_task_budget_total or (args.selfimprove_size * expected_task_counts[-1])
+
         # Choose self-improve attempts
         selfimprove_entries = choose_selfimproves(
-            output_dir, archive, args.selfimprove_size,
+            output_dir, archive, scheduler.get_generation_child_count(generation_seed),
             method=args.choose_selfimproves_method,
             run_baseline=args.run_baseline,
             benchmark_name=args.benchmark,
+            rng=generation_rng,
         )
         logger.info(f"Self-improve entries for generation {gen_num}: {selfimprove_entries}")
-
-        # Run self-improvement processes
-        selfimprove_ids = []
-        executor = ThreadPoolExecutor(max_workers=args.selfimprove_workers)
-        future_to_job = {
-            executor.submit(
-                self_improve,
-                parent_commit=parent_commit,
-                output_dir=output_dir,
-                force_rebuild=False,
-                num_evals=args.num_benchmark_evals,
-                post_improve_diagnose=args.post_improve_diagnose,
-                entry=entry,
-                test_task_list=stage_small_issues,
-                test_more_threshold=None if args.shallow_eval else test_more_threshold,
-                test_task_list_more=None if args.shallow_eval else stage_medium_issues,
-                full_eval_threshold=None if args.skip_final_eval else get_full_eval_threshold(output_dir, archive, args.benchmark),
-                final_eval_task_list=None if args.skip_final_eval else final_stage_issues,
-                run_baseline=args.run_baseline,
-                benchmark_name=args.benchmark,
-            ): (parent_commit, entry)
-            for parent_commit, entry in selfimprove_entries
-        }
-
-        # Impose a real wall-clock deadline for the generation's self-improve attempts.
-        gen_deadline = time.monotonic() + 1.5 * 60 * 60
-        pending = set(future_to_job)
-        try:
-            while pending:
-                remaining = gen_deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-
-                done, pending = wait(pending, timeout=remaining, return_when=FIRST_COMPLETED)
-                if not done:
-                    break
-
-                for future in done:
-                    try:
-                        metadata = future.result()
-                        selfimprove_ids.append(metadata['run_id'])
-                    except Exception as e:
-                        import traceback
-                        parent_commit, entry = future_to_job[future]
-                        logger.error(f"Self-improvement step failed for parent={parent_commit}, entry={entry}: {e}")
-                        logger.error(f"Traceback:\n{traceback.format_exc()}")
-
-            if pending:
-                for future in pending:
-                    parent_commit, entry = future_to_job[future]
-                    logger.error(f"Self-improvement attempt timed out for parent={parent_commit}, entry={entry}.")
-                    future.cancel()
-        finally:
-            executor.shutdown(wait=False, cancel_futures=True)
+        scheduler_result = scheduler.run_generation(
+            output_dir,
+            selfimprove_entries,
+            generation_seed,
+            None if args.skip_final_eval else get_full_eval_threshold(output_dir, archive, args.benchmark),
+        )
+        selfimprove_ids = scheduler_result["children"]
+        selfimprove_ids_compiled = scheduler_result["children_compiled"]
 
         # Update archive
         logger.info(f"Updating archive for generation {gen_num}")
-        selfimprove_ids_compiled = filter_compiled(
-            selfimprove_ids,
+        archive = update_archive(
             output_dir,
-            expected_task_counts=[expected_task_counts[0]] if args.shallow_eval else expected_task_counts,
-            logger=logger,
+            archive,
+            scheduler_result["archive_candidates"],
+            method=args.update_archive,
+            noise_leeway=args.eval_noise,
         )
-        archive = update_archive(output_dir, archive, selfimprove_ids_compiled, method=args.update_archive, noise_leeway=args.eval_noise)
+        generation_end = time.time()
 
         # Save DGM state
         with open(os.path.join(output_dir, "dgm_metadata.jsonl"), "a") as f:
             f.write(json.dumps({
                 "benchmark_name": args.benchmark,
+                "scheduler_name": args.scheduler,
+                "seed": generation_seed,
                 "generation": gen_num,
+                "generation_start_time": generation_start,
+                "generation_end_time": generation_end,
+                "generation_wall_clock_seconds": generation_end - generation_start,
                 "selfimprove_entries": selfimprove_entries,
                 "children": selfimprove_ids,
                 "children_compiled": selfimprove_ids_compiled,
+                "archive_candidates": scheduler_result["archive_candidates"],
+                "children_generated_count": len(selfimprove_ids),
+                "children_compiled_count": scheduler_result["children_compiled_count"],
+                "children_fully_evaluated_count": scheduler_result["children_fully_evaluated_count"],
+                "best_child_score": scheduler_result["best_child_score"],
+                "avg_child_score": scheduler_result["avg_child_score"],
+                "archive_size": len(archive),
+                "evaluation_budget_tasks_total": generation_budget_total,
+                "evaluation_budget_tasks_consumed": scheduler_result["evaluation_budget_tasks_consumed"],
+                "rungs": scheduler_result["rungs"],
                 "archive": archive,
             }, indent=2) + "\n")
 
