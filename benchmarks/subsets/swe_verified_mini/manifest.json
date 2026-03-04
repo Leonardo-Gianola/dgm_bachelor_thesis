@@ -1,0 +1,20 @@
+{
+  "benchmark_name": "swe_verified_mini",
+  "dataset_name": "MariusHobbhahn/swe-bench-verified-mini",
+  "dataset_cache_path": "benchmarks/data/swe_verified_mini/test.json",
+  "source_instance_ids_path": "benchmarks/data/swe_verified_mini/instance_ids.json",
+  "subset_sizes": {
+    "stage_small.json": 3,
+    "stage_medium.json": 12,
+    "stage_full_remaining.json": 35,
+    "full_mini_50.json": 50,
+    "rung0_1.json": 1,
+    "rung1_5.json": 5,
+    "rung2_15.json": 15
+  },
+  "cumulative_stage_sizes": [
+    3,
+    15,
+    50
+  ]
+}

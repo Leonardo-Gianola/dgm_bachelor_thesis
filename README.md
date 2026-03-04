@@ -62,16 +62,50 @@ cd ../../
 python -m polyglot.prepare_polyglot_dataset
 ```
 
+```bash
+# Optional but recommended: cache the default mini benchmark locally for offline/reproducible runs
+python -m benchmarks.cache_swe_verified_mini
+```
+
 ## Running the DGM
 ```bash
 python DGM_outer.py
 ```
 By default, outputs will be saved in the `output_dgm/` directory.
+The default benchmark is `swe_verified_mini`, which uses the 50-task
+`MariusHobbhahn/swe-bench-verified-mini` dataset. Legacy benchmarks are still available:
+
+```bash
+python DGM_outer.py --benchmark swe_verified_legacy
+python DGM_outer.py --benchmark polyglot_legacy
+```
+
+Before reporting mini benchmark results, bootstrap the `initial_swe_verified_mini/`
+archive with a full 50-task baseline run:
+
+```bash
+python test_swebench.py --benchmark swe_verified_mini --full_mini --agent_dir initial_swe_verified_mini --write_agent_metadata
+```
+
+Useful manual benchmark modes:
+
+```bash
+# Single task smoke test
+python test_swebench.py --benchmark swe_verified_mini --single_task django__django-11790 --agent_dir initial_swe_verified_mini
+
+# Run a specific subset file (for example a Hyperband rung)
+python test_swebench.py --benchmark swe_verified_mini --subset benchmarks/subsets/swe_verified_mini/rung1_5.json --agent_dir initial_swe_verified_mini
+
+# Full 50-task mini run
+python test_swebench.py --benchmark swe_verified_mini --full_mini --agent_dir initial_swe_verified_mini
+```
 
 ## File Structure
 - `analysis/` scripts used for plotting and analysis
 - `initial/` SWE-bench logs and performance of the initial agent
+- `initial_swe_verified_mini/` fresh mini benchmark seed archive
 - `initial_polyglot/` Polyglot logs and performance of the initial agent
+- `benchmarks/` benchmark registry, cached mini dataset metadata, and subset manifests
 - `swe_bench/` code needed for SWE-bench evaluation
 - `polyglot/` code needed for Polyglot evaluation
 - `prompts/` prompts used for foundation models

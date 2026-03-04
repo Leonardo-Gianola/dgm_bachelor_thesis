@@ -199,6 +199,8 @@ def read_mdlog_file(filepath, filter=True):
 
 def find_selfimprove_eval_logs(entry, out_dir, commit_id='initial', filter=True):
     predictions_dir = os.path.join(out_dir, commit_id, 'predictions')
+    if not os.path.exists(predictions_dir):
+        return [], [], [], []
     all_preds_folders = [f for f in os.listdir(predictions_dir) if os.path.isdir(os.path.join(predictions_dir, f))]
     prediction_log_files = [os.path.join(predictions_dir, f, f"{entry}.md") for f in all_preds_folders]
     prediction_json_files = [os.path.join(predictions_dir, f, f"{entry}.json") for f in all_preds_folders]
@@ -315,8 +317,20 @@ def get_diagnose_prompt_swe(entry_id, commit, root_dir, out_dir, dataset, patch_
     else:
         # Get user prompt for the entry
         md_logs, eval_logs, predicted_patches, eval_results = find_selfimprove_eval_logs(entry_id, out_dir, commit_id=commit)
-        md_log, eval_log, predicted_patch, eval_result = process_selfimprove_eval_logs(md_logs, eval_logs, predicted_patches, eval_results)
         entry = next((e for e in dataset if e['instance_id'] == entry_id), None)
+        assert entry, f"Could not find entry with id {entry_id} in dataset."
+        if md_logs or eval_logs or predicted_patches or eval_results:
+            md_log, eval_log, predicted_patch, eval_result = process_selfimprove_eval_logs(
+                md_logs, eval_logs, predicted_patches, eval_results
+            )
+        else:
+            md_log = (
+                "No previous benchmark execution logs are available for this task. "
+                "Reason about the issue directly from the benchmark problem statement and the hidden test patch."
+            )
+            eval_log = "No previous benchmark evaluation report is available."
+            predicted_patch = "No previous predicted patch is available."
+            eval_result = "No previous evaluation result is available."
         answer_patch = entry['patch']
         test_patch = entry['test_patch']
         github_issue = entry['problem_statement']

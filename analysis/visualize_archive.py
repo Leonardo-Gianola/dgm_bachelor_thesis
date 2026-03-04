@@ -13,11 +13,18 @@ class EvalQuantity:
     MED = "med"
     BIG = "big"
 
-def to_eval_quantity_enum(eval_quantity, halluc=False):
+def to_eval_quantity_enum(eval_quantity, benchmark_name=None, halluc=False):
     # Convert a number to the corresponding EvalQuantity enum
     if halluc:
         if eval_quantity <= 1.5:
             return EvalQuantity.SMALL
+        else:
+            return EvalQuantity.BIG
+    if benchmark_name == "swe_verified_mini":
+        if eval_quantity <= 3:
+            return EvalQuantity.SMALL
+        elif eval_quantity <= 15:
+            return EvalQuantity.MED
         else:
             return EvalQuantity.BIG
     else:
@@ -39,7 +46,8 @@ def get_evalquantity(dgm_dir, node_id, metadata_name="metadata.json", halluc=Fal
         metadata = json.load(f)
     overall_performance = metadata.get("overall_performance", {})
     eval_quantity = overall_performance.get("total_submitted_instances", 0) if overall_performance else 0
-    return to_eval_quantity_enum(eval_quantity, halluc=halluc)
+    benchmark_name = metadata.get("benchmark_name")
+    return to_eval_quantity_enum(eval_quantity, benchmark_name=benchmark_name, halluc=halluc)
 
 def get_parent_commit(dgm_dir, child_node_id, metadata_name="metadata.json"):
     """
@@ -105,10 +113,17 @@ def build_graph(dgm_dir, archives, score_func, metadata_name="metadata.json"):
 
     # Root node metric score
     if score_func == get_performance_score:
-        root_node_evalquant = to_eval_quantity_enum(initial_metadata.get("overall_performance", 0).get("total_submitted_instances", 0))
+        root_node_evalquant = to_eval_quantity_enum(
+            initial_metadata.get("overall_performance", 0).get("total_submitted_instances", 0),
+            benchmark_name=initial_metadata.get("benchmark_name"),
+        )
         root_node_score = initial_metadata.get("overall_performance", {}).get("accuracy_score", 0.0)
     else:
-        root_node_evalquant = to_eval_quantity_enum(initial_metadata.get("overall_performance", 0).get("total_submitted_instances", 0), halluc=True)
+        root_node_evalquant = to_eval_quantity_enum(
+            initial_metadata.get("overall_performance", 0).get("total_submitted_instances", 0),
+            benchmark_name=initial_metadata.get("benchmark_name"),
+            halluc=True,
+        )
         halluc_perf = initial_metadata.get("hallucination_performance", {})
         solved_halluc_score = halluc_perf.get("solved_halluc_score", 0.0)
         root_node_score = solved_halluc_score

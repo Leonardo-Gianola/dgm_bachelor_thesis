@@ -2,17 +2,18 @@ import argparse
 import datetime
 import json
 import os
+import shutil
 import docker
 
+from benchmarks.config import BENCHMARKS, get_benchmark, get_dataset_source, load_benchmark_dataset
+from benchmarks.swe_verified_harness import harness as verified_harness
+from benchmarks.swe_verified_report import make_report as make_verified_report
 from llm import create_client, get_response_from_llm, extract_json_between_markers
 from llm_withtools import OPENAI_MODEL
 from prompts.self_improvement_prompt import get_diagnose_prompt_polyglot, get_diagnose_prompt_swe, get_problem_description_prompt
 from prompts.diagnose_improvement_prompt import get_diagnose_improvement_prompt
 from prompts.testrepo_prompt import get_test_description
-from swe_bench.harness import harness
 from polyglot.harness import harness as polyglot_harness
-from swe_bench.report import make_report
-from utils.common_utils import load_json_file
 from utils.evo_utils import get_model_patch_paths, get_all_performance, is_compiled_self_improve
 from utils.docker_utils import (
     build_dgm_container,
@@ -28,9 +29,11 @@ from utils.docker_utils import (
 dataset = None
 diagnose_model = OPENAI_MODEL
 
-def diagnose_problem(entry, commit, root_dir, out_dir, patch_files=[], max_attempts=3, polyglot=False):
+def diagnose_problem(entry, commit, root_dir, out_dir, patch_files=None, max_attempts=3, benchmark_name="swe_verified_mini"):
+    patch_files = patch_files or []
+    benchmark = get_benchmark(benchmark_name)
     client = create_client(diagnose_model)
-    if polyglot:
+    if benchmark.kind == "polyglot":
         diagnose_sys_message, diagnose_prompt = get_diagnose_prompt_polyglot(
             entry, commit, root_dir, out_dir, dataset,
             patch_files=patch_files,
@@ -52,7 +55,7 @@ def diagnose_problem(entry, commit, root_dir, out_dir, patch_files=[], max_attem
         safe_log(f"Message history: {msg_history}")
         response_json = extract_json_between_markers(response)
         assert response_json, "empty response json"
-        problem_statement = get_problem_description_prompt(response_json, polyglot)
+        problem_statement = get_problem_description_prompt(response_json, benchmark.kind == "polyglot")
     except Exception as e:
         # Exception most probably due to not having json in the response
         safe_log(f"Error while diagnosing the problem: {e}")
@@ -61,7 +64,7 @@ def diagnose_problem(entry, commit, root_dir, out_dir, patch_files=[], max_attem
                 entry, commit, root_dir, out_dir,
                 patch_files=patch_files,
                 max_attempts=max_attempts-1,
-                polyglot=polyglot,
+                benchmark_name=benchmark_name,
             )
         else:
             return None
@@ -123,14 +126,41 @@ def save_metadata(metadata, output_dir):
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, indent=4)
 
-def run_harness_swe(
-        entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id,
-        test_more_threshold, test_task_list, test_task_list_more,
-        full_eval_threshold=None, test_task_list_big=None,
+def _apply_benchmark_metadata(
+        metadata,
+        benchmark_name,
+        output_dir,
+        model_name_or_path,
+        evaluation_dirs,
+        evaluated_subset_names,
+        budget_name,
+        budget_size,
     ):
+    performances, overall_performance = get_all_performance(model_name_or_path, results_dir=output_dir)
+    metadata['evaluation_dirs'] = [str(dn) for dn in evaluation_dirs]
+    metadata['benchmark_prediction_dirs'] = metadata['evaluation_dirs']
+    metadata['benchmark_name'] = benchmark_name
+    metadata['dataset_source'] = get_dataset_source(benchmark_name)
+    metadata['overall_performance'] = overall_performance
+    metadata['benchmark_performance'] = overall_performance
+    metadata['evaluated_subset_names'] = evaluated_subset_names
+    metadata['evaluated_task_count'] = overall_performance.get('total_submitted_instances', 0) if overall_performance else 0
+    metadata['budget_name'] = budget_name
+    metadata['budget_size'] = budget_size
+    return performances, overall_performance
+
+
+def run_harness_verified(
+        benchmark_name, entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id,
+        test_more_threshold, test_task_list, test_task_list_more,
+        full_eval_threshold=None, final_eval_task_list=None,
+        stage_subset_name="stage_small", more_subset_name="stage_medium", final_subset_name="stage_full",
+    ):
+    all_evaluation_dirs = []
+    evaluated_subset_names = []
     safe_log('Start harness')
     test_task_list = [entry] if test_task_list is None else test_task_list
-    dnames = harness(
+    dnames = verified_harness(
         test_task_list=test_task_list,
         num_samples=-1,
         max_workers=min(5, len(test_task_list)),
@@ -139,19 +169,30 @@ def run_harness_swe(
         num_evals=num_evals,
         num_evals_parallel=5,
         pred_dname=os.path.join(output_dir, "predictions"),
+        benchmark_name=benchmark_name,
     )
-    metadata['swe_dnames'] = [str(dn) for dn in dnames]
+    all_evaluation_dirs.extend(dnames)
+    evaluated_subset_names.append(stage_subset_name)
     safe_log('Start make_report')
-    make_report(
+    make_verified_report(
         dnames,
         run_ids=[f"{run_id}_{i}" for i in range(len(dnames))],
-        dataset_name="princeton-nlp/SWE-bench_Verified",
+        benchmark_name=benchmark_name,
+        dataset_name=get_dataset_source(benchmark_name),
         output_dir=output_dir,
         dnames_workers=5,
     )
     safe_log('Start get_performance')
-    performances, overall_performance = get_all_performance(model_name_or_path, results_dir=output_dir)
-    metadata['overall_performance'] = overall_performance
+    performances, overall_performance = _apply_benchmark_metadata(
+        metadata,
+        benchmark_name,
+        output_dir,
+        model_name_or_path,
+        all_evaluation_dirs,
+        evaluated_subset_names,
+        stage_subset_name,
+        len(test_task_list),
+    )
     safe_log("End of evaluation")
 
     # Check if additional evaluation should be run
@@ -159,7 +200,7 @@ def run_harness_swe(
         test_more_threshold is not None and test_task_list_more is not None and \
             overall_performance.get('total_resolved_instances', 0) >= len(test_task_list) * test_more_threshold):
         safe_log("Start additional evaluation cycle")
-        dnames = harness(
+        dnames = verified_harness(
             test_task_list=test_task_list_more,
             num_samples=-1,
             max_workers=min(5, len(test_task_list_more)),
@@ -168,52 +209,87 @@ def run_harness_swe(
             num_evals=num_evals,
             num_evals_parallel=5,
             pred_dname=os.path.join(output_dir, "predictions"),
+            benchmark_name=benchmark_name,
         )
+        all_evaluation_dirs.extend(dnames)
+        evaluated_subset_names.append(more_subset_name)
         safe_log('Start make_report more')
-        make_report(
+        make_verified_report(
             dnames,
             run_ids=[f"{run_id}_{i}" for i in range(len(dnames))],
-            dataset_name="princeton-nlp/SWE-bench_Verified",
+            benchmark_name=benchmark_name,
+            dataset_name=get_dataset_source(benchmark_name),
             output_dir=output_dir,
             dnames_workers=5,
         )
         safe_log('Start get_performance')
-        performances, overall_performance = get_all_performance(model_name_or_path, results_dir=output_dir)
-        metadata['overall_performance'] = overall_performance
+        cumulative_budget = len(test_task_list) + len(test_task_list_more)
+        performances, overall_performance = _apply_benchmark_metadata(
+            metadata,
+            benchmark_name,
+            output_dir,
+            model_name_or_path,
+            all_evaluation_dirs,
+            evaluated_subset_names,
+            more_subset_name,
+            cumulative_budget,
+        )
         safe_log("End of evaluation more")
 
-    # Run the full evaluation on the big split once a run looks competitive.
+    # Run the final evaluation once a run looks competitive.
     if (
         overall_performance and
         full_eval_threshold is not None and
-        test_task_list_big is not None and
+        final_eval_task_list is not None and
         overall_performance.get('accuracy_score', 0) >= full_eval_threshold
     ):
         safe_log("Start full evaluation cycle")
-        dnames = harness(
-            test_task_list=test_task_list_big,
+        dnames = verified_harness(
+            test_task_list=final_eval_task_list,
             num_samples=-1,
-            max_workers=min(5, len(test_task_list_big)),
+            max_workers=min(5, len(final_eval_task_list)),
             model_name_or_path=model_name_or_path,
             model_patch_paths=patch_files,
             num_evals=num_evals,
             num_evals_parallel=5,
             pred_dname=os.path.join(output_dir, "predictions"),
+            benchmark_name=benchmark_name,
         )
+        all_evaluation_dirs.extend(dnames)
+        evaluated_subset_names.append(final_subset_name)
         safe_log('Start make_report full')
-        make_report(
+        make_verified_report(
             dnames,
             run_ids=[f"{run_id}_{i}" for i in range(len(dnames))],
-            dataset_name="princeton-nlp/SWE-bench_Verified",
+            benchmark_name=benchmark_name,
+            dataset_name=get_dataset_source(benchmark_name),
             output_dir=output_dir,
             dnames_workers=5,
         )
         safe_log('Start get_performance full')
-        performances, overall_performance = get_all_performance(model_name_or_path, results_dir=output_dir)
-        metadata['overall_performance'] = overall_performance
+        cumulative_budget = len(test_task_list)
+        if test_task_list_more is not None:
+            cumulative_budget += len(test_task_list_more)
+        cumulative_budget += len(final_eval_task_list)
+        performances, overall_performance = _apply_benchmark_metadata(
+            metadata,
+            benchmark_name,
+            output_dir,
+            model_name_or_path,
+            all_evaluation_dirs,
+            evaluated_subset_names,
+            final_subset_name,
+            cumulative_budget,
+        )
         safe_log("End of full evaluation")
 
-def run_harness_polyglot(entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id, test_more_threshold, test_task_list, test_task_list_more):
+def run_harness_polyglot(
+        benchmark_name, entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id,
+        test_more_threshold, test_task_list, test_task_list_more,
+        stage_subset_name="stage_small", more_subset_name="stage_medium",
+    ):
+    all_evaluation_dirs = []
+    evaluated_subset_names = []
     safe_log('Start harness')
     test_task_list = [entry] if test_task_list is None else test_task_list
     safe_log(f'workers {min(10, len(test_task_list))}')
@@ -228,10 +304,19 @@ def run_harness_polyglot(entry, model_name_or_path, patch_files, num_evals, outp
         pred_dname=os.path.join(output_dir, "predictions"),
         output_dir=output_dir
     )
-    metadata['swe_dnames'] = [str(dn) for dn in dnames]
+    all_evaluation_dirs.extend(dnames)
+    evaluated_subset_names.append(stage_subset_name)
     safe_log('Start get_performance')
-    performances, overall_performance = get_all_performance(model_name_or_path, results_dir=output_dir)
-    metadata['overall_performance'] = overall_performance
+    performances, overall_performance = _apply_benchmark_metadata(
+        metadata,
+        benchmark_name,
+        output_dir,
+        model_name_or_path,
+        all_evaluation_dirs,
+        evaluated_subset_names,
+        stage_subset_name,
+        len(test_task_list),
+    )
     safe_log("End of evaluation")
 
     # Check if additional evaluation should be run
@@ -250,9 +335,19 @@ def run_harness_polyglot(entry, model_name_or_path, patch_files, num_evals, outp
             pred_dname=os.path.join(output_dir, "predictions"),
             output_dir=output_dir
         )
-        # metadata['swe_dnames'] = [str(dn) for dn in dnames]
+        all_evaluation_dirs.extend(dnames)
+        evaluated_subset_names.append(more_subset_name)
         safe_log('Start get_performance')
-        performances, overall_performance = get_all_performance(model_name_or_path, results_dir=output_dir)
+        performances, overall_performance = _apply_benchmark_metadata(
+            metadata,
+            benchmark_name,
+            output_dir,
+            model_name_or_path,
+            all_evaluation_dirs,
+            evaluated_subset_names,
+            more_subset_name,
+            len(test_task_list) + len(test_task_list_more),
+        )
         metadata['overall_performance_deep'] = overall_performance
         safe_log("End of evaluation more")
 
@@ -268,19 +363,17 @@ def self_improve(
     test_more_threshold=None,
     test_task_list_more=None,
     full_eval_threshold=None,
+    final_eval_task_list=None,
     # Run baseline
     run_baseline=None,
-    polyglot=False
+    benchmark_name='swe_verified_mini',
+    search_strategy='dgm',
+    rung=None,
 ):  
 
     global dataset
-    if polyglot:
-        with open("polyglot/polyglot_benchmark_metadata.json") as f:
-            dataset = json.loads(f.read())
-    else:
-        from datasets import load_dataset
-        dataset = load_dataset("princeton-nlp/SWE-bench_Verified")
-        dataset = dataset['test']
+    benchmark = get_benchmark(benchmark_name)
+    dataset = load_benchmark_dataset(benchmark_name)
 
     # Variables for this self-improvement attempt
     metadata = {}
@@ -291,7 +384,10 @@ def self_improve(
     os.makedirs(output_dir, exist_ok=True)
     metadata['run_id'] = run_id
     metadata['parent_commit'] = parent_commit
-    test_task_list_big = load_json_file("./swe_bench/subsets/big.json")
+    metadata['benchmark_name'] = benchmark_name
+    metadata['dataset_source'] = get_dataset_source(benchmark_name)
+    metadata['search_strategy'] = search_strategy
+    metadata['rung'] = rung
 
     # Set up logger
     logger = setup_logger(os.path.join(output_dir, "self_improve.log"))
@@ -314,7 +410,7 @@ def self_improve(
         if container is None:
             raise RuntimeError("Failed to start container")
 
-        if polyglot:
+        if benchmark.kind == "polyglot":
             # remove the swe version of coding_agent.py
             exec_result = container.exec_run("rm /dgm/coding_agent.py", workdir='/')
             log_container_output(exec_result)
@@ -354,7 +450,14 @@ def self_improve(
         # Get tasks to improve
         if entry:
             safe_log(f"Task to improve: {entry}")
-            problem_statement = diagnose_problem(entry, parent_commit, root_dir, out_dir_base, patch_files=patch_files, polyglot=polyglot)
+            problem_statement = diagnose_problem(
+                entry,
+                parent_commit,
+                root_dir,
+                out_dir_base,
+                patch_files=patch_files,
+                benchmark_name=benchmark_name,
+            )
             safe_log(f"problem_statement: {problem_statement}")
         else:
             safe_log("No entry provided. Exiting.")
@@ -430,15 +533,20 @@ def self_improve(
     model_name_or_path = run_id
     if model_patch_exists and model_patch_notempty:
         try:
-            if not polyglot:
-                run_harness_swe(
+            if benchmark.kind != "polyglot":
+                run_harness_verified(
+                    benchmark_name,
                     entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id,
                     test_more_threshold, test_task_list, test_task_list_more,
                     full_eval_threshold=full_eval_threshold,
-                    test_task_list_big=test_task_list_big,
+                    final_eval_task_list=final_eval_task_list,
                 )
             else:
-                run_harness_polyglot(entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id, test_more_threshold, test_task_list, test_task_list_more)
+                run_harness_polyglot(
+                    benchmark_name,
+                    entry, model_name_or_path, patch_files, num_evals, output_dir, metadata, run_id,
+                    test_more_threshold, test_task_list, test_task_list_more,
+                )
         except Exception as e:
             safe_log(f"Error while evaluating the self-improvement: {e}")
 
@@ -468,14 +576,17 @@ def main():
     parser.add_argument('--parent_commit', default="initial", type=str, help='Current commit to find the eval results, "initial" if starting from original dgm, else the run_id')
     parser.add_argument('--output_dir', default="./output_selfimprove", type=str, help='Directory to store the output')
     parser.add_argument('--force_rebuild', default=False, action='store_true', help='Force rebuild of the Docker image')
-    parser.add_argument('--num_evals', default=1, type=int, help='Repeated number of swe evaluations after self-improvement')
+    parser.add_argument('--benchmark', default="swe_verified_mini", choices=sorted(BENCHMARKS), help='Benchmark configuration to use')
+    parser.add_argument('--num_evals', default=1, type=int, help='Repeated number of benchmark evaluations after self-improvement')
     parser.add_argument('--no_post_improve_diagnose', default=False, action='store_true', help='Skip diagnosing the self-improvement after evaluation')
     parser.add_argument('--entry', default="django__django-10999", type=str, help='Task entry to improve')
     parser.add_argument('--test_task_list', default=None, type=str, help='List of tasks to evaluate the self-improvement')
     args = parser.parse_args()
 
     # Copy cached initial version into experiment dir
-    os.system(f"cp -r initial/ {args.output_dir}")
+    benchmark = get_benchmark(args.benchmark)
+    if benchmark.initial_archive_path and benchmark.initial_archive_path.exists():
+        shutil.copytree(benchmark.initial_archive_path, os.path.join(args.output_dir, "initial"), dirs_exist_ok=True)
 
     metadata = self_improve(
         parent_commit=args.parent_commit,
@@ -485,6 +596,7 @@ def main():
         post_improve_diagnose=not args.no_post_improve_diagnose,
         entry=args.entry,
         test_task_list=args.test_task_list,
+        benchmark_name=args.benchmark,
     )
 
 if __name__ == "__main__":

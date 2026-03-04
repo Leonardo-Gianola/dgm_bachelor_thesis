@@ -40,6 +40,39 @@ def get_model_patch_paths(root_dir, dgm_dir, parent_commit):
         prev_commit = parent_metadata.get('parent_commit', 'initial')
     return patch_files[::-1]  # reverse the list to get the correct order
 
+
+def get_model_patch_paths_from_agent_dir(agent_dir):
+    """
+    Resolve the ordered patch chain for a stored agent archive directory.
+
+    The expected layout is the DGM archive layout where each child directory
+    stores a `metadata.json` with a `parent_commit` that points to a sibling
+    directory under the same run root.
+    """
+    agent_dir = os.path.abspath(agent_dir)
+    metadata_path = os.path.join(agent_dir, "metadata.json")
+    if not os.path.exists(metadata_path):
+        return []
+
+    patch_files = []
+    current_dir = agent_dir
+    while True:
+        model_patch_file = os.path.join(current_dir, "model_patch.diff")
+        if os.path.exists(model_patch_file):
+            patch_files.append(model_patch_file)
+
+        metadata_path = os.path.join(current_dir, "metadata.json")
+        if not os.path.exists(metadata_path):
+            break
+
+        metadata = load_json_file(metadata_path)
+        parent_commit = metadata.get("parent_commit", "initial")
+        if parent_commit == "initial":
+            break
+        current_dir = os.path.join(os.path.dirname(current_dir), parent_commit)
+
+    return patch_files[::-1]
+
 def get_all_performance(run_keyword, results_dir='./swe_bench'):
     """
     Retrieve performance results for all runs based on the provided keyword.
@@ -93,13 +126,14 @@ def get_all_performance(run_keyword, results_dir='./swe_bench'):
     
     return performance_results, overall_performance
 
-def is_compiled_self_improve(metadata, num_swe_issues=[], logger=None):
+def is_compiled_self_improve(metadata, expected_task_counts=None, logger=None):
     """
     Checks if the run was properly compiled and 'self-improved' by verifying:
       1. The 'overall_performance' dict has the required keys:
          ('accuracy_score', 'total_unresolved_ids', 'total_resolved_ids', 'total_emptypatch_ids').
       2. There is at least one non-empty patch (resolved + unresolved > 0).
-      3. If num_swe_issues is provided, the total number of evaluated issues matches num_swe_issues.
+      3. If expected_task_counts is provided, the total number of evaluated issues matches
+         one of the expected counts for this benchmark flow.
 
     Returns True if all conditions are met, else False.
     """
@@ -122,10 +156,12 @@ def is_compiled_self_improve(metadata, num_swe_issues=[], logger=None):
         log_info("no non-empty patch")
         return False
 
-    # 3. If specified, total evaluated must match num_swe_issues, else it means that some didn't compile
+    # 3. If specified, total evaluated must match the benchmark flow.
     total_evaluated = overall_perf['total_submitted_instances']
-    if num_swe_issues and total_evaluated < num_swe_issues[0]:
-        log_info("not match num_issues")
-        return False
+    if expected_task_counts:
+        normalized_counts = sorted(set(expected_task_counts))
+        if total_evaluated not in normalized_counts:
+            log_info(f"not match expected task counts: {normalized_counts}")
+            return False
 
     return True
