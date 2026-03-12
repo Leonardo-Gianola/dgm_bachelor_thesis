@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /c/Users/leona/Documents/GitHub/Startup_Test/dgm_bachelor_thesis/*.py)",
+      "Bash(cd \"C:\\\\Users\\\\leona\\\\Documents\\\\GitHub\\\\Startup_Test\\\\dgm_bachelor_thesis\" && python -c \"from schedulers import ASHAScheduler, BaselineScheduler, HyperbandScheduler; print\\('schedulers OK'\\)\" 2>&1 && python -c \"import DGM_outer; print\\('DGM_outer OK'\\)\" 2>&1)"
+    ]
+  }
+}

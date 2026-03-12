@@ -436,3 +436,273 @@ class HyperbandScheduler(BaseScheduler):
             "rungs": rungs,
             **summary,
         }
+
+
+class ASHAScheduler(BaseScheduler):
+    """
+    Asynchronous Successive Halving Algorithm (ASHA) scheduler.
+
+    Unlike HyperbandScheduler (synchronous SHA), ASHA does not wait for all
+    candidates to finish a rung before promoting.  As soon as a candidate
+    completes rung r and is currently in the top (n_initial / eta^(r+1)) of
+    all rung-r completions seen so far, it is promoted immediately to rung r+1.
+    This keeps workers busy and avoids idle time waiting for stragglers.
+
+    Shares the same budget arithmetic as HyperbandScheduler so the two
+    schedulers are directly comparable under identical resource constraints.
+    """
+
+    def __init__(self, args, benchmark, logger):
+        super().__init__(args, benchmark, logger)
+        self.eta = args.hyperband_eta
+        self.budgets = args.hyperband_budgets
+        self.reference_instance_ids = load_reference_instance_ids(args.benchmark)
+
+    # ------------------------------------------------------------------
+    # Budget helpers (identical to HyperbandScheduler)
+    # ------------------------------------------------------------------
+
+    def _generation_budget_target(self):
+        if self.args.generation_task_budget_total:
+            return self.args.generation_task_budget_total
+        return self.args.selfimprove_size * self.budgets[-1]
+
+    def _budget_cost(self, initial_children):
+        total = 0
+        previous_budget = 0
+        candidates = initial_children
+        for budget in self.budgets:
+            total += candidates * (budget - previous_budget)
+            previous_budget = budget
+            candidates = math.ceil(candidates / self.eta)
+        return total
+
+    def get_generation_child_count(self, generation_seed):
+        if self.args.hyperband_initial_children:
+            return self.args.hyperband_initial_children
+
+        target_budget = self._generation_budget_target()
+        best_n = 1
+        for n in range(1, 1000):
+            if self._budget_cost(n) <= target_budget:
+                best_n = n
+            else:
+                break
+        return best_n
+
+    def _task_increments(self, generation_seed):
+        task_order = list(self.reference_instance_ids)
+        rng = random.Random(generation_seed)
+        rng.shuffle(task_order)
+        increments = []
+        previous_budget = 0
+        for budget in self.budgets:
+            increments.append(task_order[previous_budget:budget])
+            previous_budget = budget
+        return increments
+
+    # ------------------------------------------------------------------
+    # Main generation loop
+    # ------------------------------------------------------------------
+
+    def run_generation(self, output_dir, selfimprove_entries, generation_seed, full_eval_threshold):
+        if self.benchmark.kind == "polyglot":
+            raise ValueError("ASHA scheduler is only implemented for SWE-style task budgets.")
+
+        children = self._generate_children(output_dir, selfimprove_entries, search_strategy="asha")
+        if not children:
+            return {
+                "children": [],
+                "children_compiled": [],
+                "archive_candidates": [],
+                "evaluation_budget_tasks_consumed": 0,
+                "rungs": [],
+                "best_child_score": 0,
+                "avg_child_score": 0,
+                "children_compiled_count": 0,
+                "children_fully_evaluated_count": 0,
+            }
+
+        task_increments = self._task_increments(generation_seed)
+        n_rungs = len(self.budgets)
+        n_children = len(children)
+
+        # Maximum promotions per rung: ceil(n / eta^(r+1))
+        promote_quotas = [
+            max(1, math.ceil(n_children / (self.eta ** (r + 1))))
+            for r in range(n_rungs - 1)
+        ]
+
+        # Per-rung state (accessed only in the main thread)
+        rung_completed = [[] for _ in range(n_rungs)]   # run_ids that finished eval at rung r
+        rung_promoted = [[] for _ in range(n_rungs - 1)]  # run_ids promoted FROM rung r
+        consumed_budget = 0
+
+        executor = ThreadPoolExecutor(max_workers=self.args.selfimprove_workers)
+        future_info = {}  # future -> (run_id, rung_index)
+
+        def submit_eval(run_id, rung_index):
+            future = executor.submit(
+                evaluate_existing_child,
+                run_id,
+                output_dir,
+                self.args.num_benchmark_evals,
+                self.args.benchmark,
+                task_increments[rung_index],
+                f"asha_rung_{rung_index}",
+                f"asha_rung_{rung_index}",
+                self.budgets[rung_index],
+                self.args.scheduler,
+                rung_index,
+            )
+            future_info[future] = (run_id, rung_index)
+            return future
+
+        # Submit all children for rung 0
+        pending = {submit_eval(run_id, 0) for run_id in children}
+
+        deadline = time.monotonic() + GENERATION_TIMEOUT_SECONDS
+        try:
+            while pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    for f in pending:
+                        run_id, rung = future_info.get(f, (None, None))
+                        self.logger.error(
+                            f"ASHA timed out: child={run_id}, rung={rung}"
+                        )
+                        f.cancel()
+                    break
+
+                done, pending = wait(pending, timeout=remaining, return_when=FIRST_COMPLETED)
+                if not done:
+                    break
+
+                # Process each completed evaluation
+                for future in done:
+                    run_id, rung_index = future_info[future]
+                    try:
+                        future.result()
+                        consumed_budget += len(task_increments[rung_index])
+                        rung_completed[rung_index].append(run_id)
+                    except Exception as exc:
+                        self.logger.error(
+                            f"ASHA evaluation failed for child={run_id} at rung {rung_index}: {exc}"
+                        )
+                        self.logger.error(traceback.format_exc())
+
+                # After processing all done futures, check each rung for new promotions.
+                # Iterate from lowest to highest so a newly promoted candidate at rung r
+                # can itself be promoted to rung r+1 within the same pass if it was the
+                # only pending evaluation at rung r+1.
+                for r in range(n_rungs - 1):
+                    new_futures = self._asha_try_promote(
+                        r, output_dir, rung_completed, rung_promoted, promote_quotas,
+                        n_rungs, task_increments, future_info, executor,
+                    )
+                    pending |= set(new_futures)
+
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+        # Mark promotion decisions in per-child metadata files
+        for r in range(n_rungs - 1):
+            promoted_set = set(rung_promoted[r])
+            _mark_promotion_decisions(output_dir, rung_completed[r], promoted_set, r)
+
+        # Build rung summary stats
+        rungs = []
+        for r in range(n_rungs):
+            promoted_count = len(rung_promoted[r]) if r < n_rungs - 1 else len(rung_completed[r])
+            killed_count = len(rung_completed[r]) - promoted_count if r < n_rungs - 1 else 0
+            rungs.append({
+                "rung": r,
+                "budget_size": self.budgets[r],
+                "tasks_added": len(task_increments[r]),
+                "num_candidates_in": len(rung_completed[r]),
+                "num_promoted": promoted_count,
+                "num_killed": killed_count,
+            })
+
+        # Winner = best candidate to reach the final rung
+        final_candidates = rung_completed[n_rungs - 1]
+        winner = None
+        if final_candidates:
+            ranked_finalists = _rank_children(final_candidates, output_dir)
+            winner = ranked_finalists[0] if ranked_finalists else None
+
+        for run_id in children:
+            finalize_child_metadata(run_id, output_dir, post_improve_diagnose=False)
+        if winner:
+            finalize_child_metadata(winner, output_dir, post_improve_diagnose=self.args.post_improve_diagnose)
+
+        compiled_children = [
+            run_id for run_id in children
+            if is_compiled_self_improve(_load_child_metadata(output_dir, run_id))
+        ]
+        summary = _summarize_children(children, output_dir, self.budgets[-1])
+        archive_candidates = [winner] if winner else []
+        return {
+            "children": children,
+            "children_compiled": compiled_children,
+            "archive_candidates": archive_candidates,
+            "evaluation_budget_tasks_consumed": consumed_budget,
+            "rungs": rungs,
+            **summary,
+        }
+
+    def _asha_try_promote(self, rung_index, output_dir, rung_completed, rung_promoted,
+                          promote_quotas, n_rungs, task_increments, future_info, executor):
+        """
+        Re-rank all completions at *rung_index* and promote any newly eligible
+        candidates (positive score, in current top-K, not yet promoted).
+
+        Returns a list of newly submitted futures for the next rung.
+        """
+        if rung_index >= n_rungs - 1:
+            return []
+
+        completed = rung_completed[rung_index]
+        if not completed:
+            return []
+
+        quota = promote_quotas[rung_index]
+        already_promoted = set(rung_promoted[rung_index])
+        remaining_slots = quota - len(already_promoted)
+        if remaining_slots <= 0:
+            return []
+
+        # Rank ALL completions; the top-K set may have grown since last check.
+        ranked = _rank_children(completed, output_dir)
+        new_futures = []
+        for run_id in ranked:
+            if remaining_slots <= 0:
+                break
+            if run_id in already_promoted:
+                continue
+            score = _child_score(_load_child_metadata(output_dir, run_id))
+            if score <= 0:
+                continue
+
+            rung_promoted[rung_index].append(run_id)
+            already_promoted.add(run_id)
+            remaining_slots -= 1
+
+            next_rung = rung_index + 1
+            future = executor.submit(
+                evaluate_existing_child,
+                run_id,
+                output_dir,
+                self.args.num_benchmark_evals,
+                self.args.benchmark,
+                task_increments[next_rung],
+                f"asha_rung_{next_rung}",
+                f"asha_rung_{next_rung}",
+                self.budgets[next_rung],
+                self.args.scheduler,
+                next_rung,
+            )
+            future_info[future] = (run_id, next_rung)
+            new_futures.append(future)
+
+        return new_futures

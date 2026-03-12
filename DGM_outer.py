@@ -9,7 +9,7 @@ import time
 
 from benchmarks.config import BENCHMARKS, get_benchmark, get_cumulative_stage_task_counts, load_benchmark_subset
 from prompts.self_improvement_prompt import find_selfimprove_eval_logs
-from schedulers import BaselineScheduler, HyperbandScheduler
+from schedulers import ASHAScheduler, BaselineScheduler, HyperbandScheduler
 from utils.common_utils import load_json_file
 from utils.docker_utils import setup_logger
 from utils.evo_utils import load_dgm_metadata, is_compiled_self_improve
@@ -263,7 +263,7 @@ def main():
     parser.add_argument("--shallow_eval", default=False, action='store_true', help="Run only the first-stage benchmark evaluation for each self-improve attempt.")
     parser.add_argument("--eval_noise", type=float, default=0.1, help="Noise leeway for evaluation.")
     parser.add_argument("--skip_final_eval", default=False, action='store_true', help="Do not run the final evaluation stage even if a node qualifies.")
-    parser.add_argument("--scheduler", type=str, default="baseline", choices=["baseline", "hyperband"], help="Scheduler to use for child evaluation.")
+    parser.add_argument("--scheduler", type=str, default="baseline", choices=["baseline", "hyperband", "asha"], help="Scheduler to use for child evaluation.")
     parser.add_argument("--seed", type=int, default=0, help="Base random seed for reproducible parent/task selection.")
     parser.add_argument("--generation_task_budget_total", type=int, default=None, help="Optional total task-evaluation budget per generation.")
     parser.add_argument("--hyperband_eta", type=int, default=5, help="Hyperband reduction factor.")
@@ -292,8 +292,8 @@ def main():
     final_stage_issues = load_benchmark_subset(args.benchmark, stage_subset_names[2]) if len(stage_subset_names) > 2 else None
     expected_task_counts = get_cumulative_stage_task_counts(args.benchmark)
 
-    if args.scheduler == "hyperband" and args.benchmark != "swe_verified_mini":
-        raise ValueError("Hyperband mode is currently implemented for swe_verified_mini.")
+    if args.scheduler in ("hyperband", "asha") and args.benchmark != "swe_verified_mini":
+        raise ValueError("Hyperband and ASHA schedulers are currently implemented for swe_verified_mini only.")
 
     # Set up logger
     logger = setup_logger(os.path.join(output_dir, "dgm_outer.log"))
@@ -309,8 +309,10 @@ def main():
             final_stage_issues,
             expected_task_counts=[expected_task_counts[0]] if args.shallow_eval else expected_task_counts,
         )
-    else:
+    elif args.scheduler == "hyperband":
         scheduler = HyperbandScheduler(args, benchmark, logger)
+    else:  # asha
+        scheduler = ASHAScheduler(args, benchmark, logger)
 
     # Run the DGM
     for gen_num in range(start_gen_num, args.max_generation):
