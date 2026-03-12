@@ -97,7 +97,8 @@ class BaseScheduler:
     def run_generation(self, output_dir, selfimprove_entries, generation_seed, full_eval_threshold):
         raise NotImplementedError
 
-    def _generate_children(self, output_dir, selfimprove_entries, search_strategy):
+    def _generate_children(self, output_dir, selfimprove_entries, search_strategy,
+                           blind_mutation=False, mutation_temperature=1.0):
         child_ids = []
         executor = ThreadPoolExecutor(max_workers=self.args.selfimprove_workers)
         future_to_job = {
@@ -110,6 +111,8 @@ class BaseScheduler:
                 benchmark_name=self.args.benchmark,
                 search_strategy=search_strategy,
                 rung=0,
+                blind_mutation=blind_mutation,
+                mutation_temperature=mutation_temperature,
             ): (parent_commit, entry)
             for parent_commit, entry in selfimprove_entries
         }
@@ -706,3 +709,44 @@ class ASHAScheduler(BaseScheduler):
             new_futures.append(future)
 
         return new_futures
+
+
+class GAScheduler(BaselineScheduler):
+    """
+    Genetic Algorithm DGM scheduler.
+
+    A "blind" evolutionary baseline that decouples mutation from error-log
+    reasoning:
+
+    * **Mutation**: high-temperature LLM sampling with no task-specific failure
+      context.  The LLM is asked for a random, creative change to the coding
+      agent — analogous to a genetic mutation operator.
+    * **Selection**: Tournament selection is applied at the parent-choice level
+      (controlled by ``--choose_selfimproves_method tournament`` in
+      DGM_outer.py).  The scheduler itself uses the same three-stage fitness
+      evaluation pipeline as BaselineScheduler to measure offspring quality.
+
+    This gives a clean "blind evolution" baseline that isolates the contribution
+    of error-log-guided mutation in the standard DGM.
+    """
+
+    def __init__(self, args, benchmark, logger,
+                 stage_small_issues, stage_medium_issues, final_stage_issues,
+                 expected_task_counts):
+        super().__init__(
+            args, benchmark, logger,
+            stage_small_issues, stage_medium_issues, final_stage_issues,
+            expected_task_counts,
+        )
+        self.mutation_temperature = args.ga_mutation_temperature
+
+    def _generate_children(self, output_dir, selfimprove_entries, search_strategy,
+                            blind_mutation=False, mutation_temperature=1.0):
+        """Always use blind high-temperature mutation regardless of caller flags."""
+        return super()._generate_children(
+            output_dir,
+            selfimprove_entries,
+            search_strategy=search_strategy,
+            blind_mutation=True,
+            mutation_temperature=self.mutation_temperature,
+        )

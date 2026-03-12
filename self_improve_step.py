@@ -12,6 +12,7 @@ from llm import create_client, get_response_from_llm, extract_json_between_marke
 from llm_withtools import OPENAI_MODEL
 from prompts.self_improvement_prompt import get_diagnose_prompt_polyglot, get_diagnose_prompt_swe, get_problem_description_prompt
 from prompts.diagnose_improvement_prompt import get_diagnose_improvement_prompt
+from prompts.ga_mutation_prompt import get_ga_mutation_prompt, make_ga_problem_statement
 from prompts.testrepo_prompt import get_test_description
 from polyglot.harness import harness as polyglot_harness
 from utils.evo_utils import (
@@ -74,6 +75,55 @@ def diagnose_problem(entry, commit, root_dir, out_dir, patch_files=None, max_att
         else:
             return None
     return problem_statement
+
+def ga_blind_mutation(parent_commit, root_dir, patch_files, temperature=1.0,
+                      benchmark_name='swe_verified_mini', max_attempts=3):
+    """Generate a random mutation instruction without any task-specific error logs.
+
+    This is the "blind" mutation operator for GA DGM.  A high-temperature LLM
+    call is used so that the output is diverse across calls even for the same
+    parent.
+
+    Args:
+        parent_commit: Commit hash of the parent (used for logging only).
+        root_dir: Repository root used to read coding-agent source files.
+        patch_files: Patch files that have been applied to the parent agent.
+        temperature: Sampling temperature; higher values produce more diverse
+            mutations.  Capped at 1.0 for Anthropic models.
+        benchmark_name: Benchmark name (determines polyglot vs SWE mode).
+        max_attempts: Number of retries on JSON-parse failure.
+
+    Returns:
+        str | None: problem_statement ready to pass to coding_agent.py, or
+            None if all attempts fail.
+    """
+    benchmark = get_benchmark(benchmark_name)
+    is_polyglot = benchmark.kind == "polyglot"
+    client = create_client(diagnose_model)
+    system_message, prompt = get_ga_mutation_prompt(
+        root_dir, patch_files=patch_files, is_polyglot=is_polyglot,
+    )
+    try:
+        response, _ = get_response_from_llm(
+            msg=prompt,
+            client=client[0],
+            model=client[1],
+            system_message=system_message,
+            print_debug=False,
+            temperature=temperature,
+        )
+        response_json = extract_json_between_markers(response)
+        assert response_json, "empty response json"
+        return make_ga_problem_statement(response_json, is_polyglot=is_polyglot)
+    except Exception as e:
+        safe_log(f"Error during blind GA mutation (parent={parent_commit}): {e}")
+        if max_attempts > 0:
+            return ga_blind_mutation(
+                parent_commit, root_dir, patch_files, temperature,
+                benchmark_name, max_attempts - 1,
+            )
+        return None
+
 
 def diagnose_improvement(
         entry, parent_commit, root_dir, model_patch_file, out_dir, run_id,
@@ -346,6 +396,8 @@ def generate_child_patch(
     benchmark_name='swe_verified_mini',
     search_strategy='dgm',
     rung=None,
+    blind_mutation=False,
+    mutation_temperature=1.0,
 ):
     global dataset
     benchmark = get_benchmark(benchmark_name)
@@ -415,14 +467,24 @@ def generate_child_patch(
 
         if entry:
             safe_log(f"Task to improve: {entry}")
-            problem_statement = diagnose_problem(
-                entry,
-                parent_commit,
-                root_dir,
-                out_dir_base,
-                patch_files=patch_files,
-                benchmark_name=benchmark_name,
-            )
+            if blind_mutation:
+                safe_log("Using blind GA mutation (no error-log context).")
+                problem_statement = ga_blind_mutation(
+                    parent_commit,
+                    root_dir,
+                    patch_files,
+                    temperature=mutation_temperature,
+                    benchmark_name=benchmark_name,
+                )
+            else:
+                problem_statement = diagnose_problem(
+                    entry,
+                    parent_commit,
+                    root_dir,
+                    out_dir_base,
+                    patch_files=patch_files,
+                    benchmark_name=benchmark_name,
+                )
             safe_log(f"problem_statement: {problem_statement}")
         else:
             safe_log("No entry provided. Exiting.")

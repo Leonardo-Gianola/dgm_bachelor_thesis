@@ -9,7 +9,7 @@ import time
 
 from benchmarks.config import BENCHMARKS, get_benchmark, get_cumulative_stage_task_counts, load_benchmark_subset
 from prompts.self_improvement_prompt import find_selfimprove_eval_logs
-from schedulers import ASHAScheduler, BaselineScheduler, HyperbandScheduler
+from schedulers import ASHAScheduler, BaselineScheduler, GAScheduler, HyperbandScheduler
 from utils.common_utils import load_json_file
 from utils.docker_utils import setup_logger
 from utils.evo_utils import load_dgm_metadata, is_compiled_self_improve
@@ -55,7 +55,7 @@ def any_exceeding_context_length(output_dir, commit_id, instance_ids):
             return True
     return False
 
-def choose_selfimproves(output_dir, archive, selfimprove_size, method='random', run_baseline=None, benchmark_name='swe_verified_mini', rng=None):
+def choose_selfimproves(output_dir, archive, selfimprove_size, method='random', run_baseline=None, benchmark_name='swe_verified_mini', rng=None, tournament_k=3):
     """
     Choose self-improve attempts for the current generation.
     """
@@ -113,6 +113,15 @@ def choose_selfimproves(output_dir, archive, selfimprove_size, method='random', 
         parent_commits = sorted_commits[:min(selfimprove_size, len(sorted_commits))]
         if len(parent_commits) < selfimprove_size:
             parent_commits.extend(rng.choices(parent_commits, k=selfimprove_size - len(parent_commits)))
+    elif method == 'tournament':
+        # Tournament selection: sample k candidates, keep the fittest
+        pool = list(candidates.keys())
+        k = min(tournament_k, len(pool))
+        parent_commits = []
+        for _ in range(selfimprove_size):
+            contestants = rng.sample(pool, k)
+            winner = max(contestants, key=lambda c: candidates[c]['accuracy_score'])
+            parent_commits.append(winner)
     else:
         # Choose parents randomly
         parent_commits = rng.choices(list(candidates.keys()), k=selfimprove_size)
@@ -252,7 +261,7 @@ def main():
     parser.add_argument("--selfimprove_workers", type=int, default=2, help="Number of parallel workers for self-improvement attempts.")
     parser.add_argument(
         "--choose_selfimproves_method", type=str, default='score_child_prop',
-        choices=['random', 'score_prop', 'score_child_prop', 'best'],
+        choices=['random', 'score_prop', 'score_child_prop', 'best', 'tournament'],
         help="Method to choose self-improve attempts.",
     )
     parser.add_argument("--continue_from", type=str, default=None, help="Directory to continue the run from.")
@@ -263,12 +272,15 @@ def main():
     parser.add_argument("--shallow_eval", default=False, action='store_true', help="Run only the first-stage benchmark evaluation for each self-improve attempt.")
     parser.add_argument("--eval_noise", type=float, default=0.1, help="Noise leeway for evaluation.")
     parser.add_argument("--skip_final_eval", default=False, action='store_true', help="Do not run the final evaluation stage even if a node qualifies.")
-    parser.add_argument("--scheduler", type=str, default="baseline", choices=["baseline", "hyperband", "asha"], help="Scheduler to use for child evaluation.")
+    parser.add_argument("--scheduler", type=str, default="baseline", choices=["baseline", "hyperband", "asha", "ga"], help="Scheduler to use for child evaluation.")
     parser.add_argument("--seed", type=int, default=0, help="Base random seed for reproducible parent/task selection.")
     parser.add_argument("--generation_task_budget_total", type=int, default=None, help="Optional total task-evaluation budget per generation.")
     parser.add_argument("--hyperband_eta", type=int, default=5, help="Hyperband reduction factor.")
     parser.add_argument("--hyperband_budgets", type=parse_budget_list, default=[2, 10, 50], help="Comma-separated cumulative task budgets for Hyperband, e.g. 2,10,50.")
     parser.add_argument("--hyperband_initial_children", type=int, default=None, help="Override the number of initial Hyperband children.")
+    # GA-specific arguments
+    parser.add_argument("--ga_tournament_k", type=int, default=3, help="Tournament size for GA tournament selection.")
+    parser.add_argument("--ga_mutation_temperature", type=float, default=1.0, help="LLM sampling temperature for GA blind mutations (higher = more random).")
     # baselines
     parser.add_argument("--run_baseline", type=str, default=None, choices=['no_selfimprove', 'no_darwin'], help="Baseline to run.")
     args = parser.parse_args()
@@ -311,8 +323,18 @@ def main():
         )
     elif args.scheduler == "hyperband":
         scheduler = HyperbandScheduler(args, benchmark, logger)
-    else:  # asha
+    elif args.scheduler == "asha":
         scheduler = ASHAScheduler(args, benchmark, logger)
+    else:  # ga
+        scheduler = GAScheduler(
+            args,
+            benchmark,
+            logger,
+            stage_small_issues,
+            stage_medium_issues,
+            final_stage_issues,
+            expected_task_counts=[expected_task_counts[0]] if args.shallow_eval else expected_task_counts,
+        )
 
     # Run the DGM
     for gen_num in range(start_gen_num, args.max_generation):
@@ -328,6 +350,7 @@ def main():
             run_baseline=args.run_baseline,
             benchmark_name=args.benchmark,
             rng=generation_rng,
+            tournament_k=args.ga_tournament_k,
         )
         logger.info(f"Self-improve entries for generation {gen_num}: {selfimprove_entries}")
         scheduler_result = scheduler.run_generation(
