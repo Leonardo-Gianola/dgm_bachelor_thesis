@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(ls -la /c/Users/leona/Documents/GitHub/Startup_Test/dgm_bachelor_thesis/*.py)",
-      "Bash(cd \"C:\\\\Users\\\\leona\\\\Documents\\\\GitHub\\\\Startup_Test\\\\dgm_bachelor_thesis\" && python -c \"from schedulers import ASHAScheduler, BaselineScheduler, HyperbandScheduler; print\\('schedulers OK'\\)\" 2>&1 && python -c \"import DGM_outer; print\\('DGM_outer OK'\\)\" 2>&1)"
+      "Bash(cd \"C:\\\\Users\\\\leona\\\\Documents\\\\GitHub\\\\Startup_Test\\\\dgm_bachelor_thesis\" && python -c \"from schedulers import ASHAScheduler, BaselineScheduler, HyperbandScheduler; print\\('schedulers OK'\\)\" 2>&1 && python -c \"import DGM_outer; print\\('DGM_outer OK'\\)\" 2>&1)",
+      "Bash(find C:UsersleonaDocumentsGitHubStartup_Testdgm_bachelor_thesis -maxdepth 2 -type d -name *output* -o -name *result* -o -name *run*)",
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(head -20 grep -n \"^LLM\\\\|^MODEL\\\\|^IMPROVE\\\\|^DIAGNOSE\\\\|CLAUDE_MODEL\\\\|OPENAI_MODEL\" /c/Users/leona/Documents/GitHub/Startup_Test/dgm_bachelor_thesis/self_improve_step.py)",
+      "Bash(/dev/null find:*)"
     ]
   }
 }
