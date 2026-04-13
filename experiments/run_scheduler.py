@@ -1,9 +1,21 @@
 """
 Single-scheduler evaluation runner with live per-generation metrics.
 
-Runs one scheduler across 2 seeds (10 generations each), printing a
-metrics table after every generation so you can verify the loop works
-without waiting for the full run to finish.
+Runs one scheduler across 1 seed (5 generations), printing a metrics table
+after every generation. Budget: 50 tasks/gen → ~$80 for all 4 schedulers.
+
+Per-generation task usage:
+  Baseline/GA:      2 children × (small=3 + medium=12) = 30 tasks  (no full stage)
+  Hyperband/ASHA:   1 child  × (3 + 12 + 35)          = 50 tasks  (full eval)
+
+The budget asymmetry is intentional: each scheduler uses its optimal strategy
+within the 50-task budget. This IS the research question being compared.
+
+Run order for risk management (most important first):
+  1. baseline   — control group
+  2. hyperband  — most theoretically interesting
+  3. ga         — different selection mechanism
+  4. asha       — similar to hyperband, compare last
 
 Usage:
   python experiments/run_scheduler.py --scheduler baseline  [--dry_run]
@@ -11,8 +23,8 @@ Usage:
   python experiments/run_scheduler.py --scheduler asha      [--dry_run]
   python experiments/run_scheduler.py --scheduler ga        [--dry_run]
 
-  --seeds N N    Override seeds (default: 0 1)
-  --gens N       Override generations per seed (default: 10)
+  --seeds N      Override seeds (default: 0)
+  --gens N       Override generations per seed (default: 5)
   --dry_run      Print commands without executing
   --force_rerun  Ignore saved state, rerun
 
@@ -35,8 +47,10 @@ STATE_DIR = Path(__file__).parent / "state"
 RESULTS_DIR = Path(__file__).parent / "results"
 PYTHON = sys.executable
 
-# Budget per generation (tasks) — same across all schedulers for fair comparison
-GENERATION_TASK_BUDGET = 100
+# Budget cap per generation. Baseline/GA: 2 children get small+medium only (30 tasks).
+# Hyperband/ASHA: auto-selects n=1 child through all 3 stages (50 tasks exactly).
+# Total: 4 schedulers × 1 seed × 5 gens × avg(40 tasks) ≈ 800 tasks ≈ $80.
+GENERATION_TASK_BUDGET = 50
 
 SCHEDULER_ARGS = {
     "baseline": [
@@ -48,16 +62,14 @@ SCHEDULER_ARGS = {
         "--scheduler", "hyperband",
         "--selfimprove_size", "2",
         "--hyperband_eta", "5",
-        "--hyperband_budgets", "2,10,50",
-        "--hyperband_initial_children", "10",
+        "--hyperband_budgets", "3,15,50",
         "--generation_task_budget_total", str(GENERATION_TASK_BUDGET),
     ],
     "asha": [
         "--scheduler", "asha",
         "--selfimprove_size", "2",
         "--hyperband_eta", "5",
-        "--hyperband_budgets", "2,10,50",
-        "--hyperband_initial_children", "10",
+        "--hyperband_budgets", "3,15,50",
         "--generation_task_budget_total", str(GENERATION_TASK_BUDGET),
     ],
     "ga": [
@@ -70,10 +82,10 @@ SCHEDULER_ARGS = {
 }
 
 EST_TASKS_PER_GEN = {
-    "baseline": 100,
-    "hyperband": 76,
-    "asha": 76,
-    "ga": 100,
+    "baseline": 30,
+    "hyperband": 50,
+    "asha": 50,
+    "ga": 30,
 }
 
 
@@ -297,9 +309,9 @@ def main():
         choices=["baseline", "hyperband", "asha", "ga"],
         help="Scheduler to run.",
     )
-    parser.add_argument("--seeds", nargs="+", type=int, default=[0, 1], metavar="N",
-                        help="Seeds to run (default: 0 1).")
-    parser.add_argument("--gens", type=int, default=10, help="Generations per seed (default: 10).")
+    parser.add_argument("--seeds", nargs="+", type=int, default=[0], metavar="N",
+                        help="Seeds to run (default: 0).")
+    parser.add_argument("--gens", type=int, default=5, help="Generations per seed (default: 5).")
     parser.add_argument("--dry_run", action="store_true")
     parser.add_argument("--force_rerun", action="store_true")
     args = parser.parse_args()
