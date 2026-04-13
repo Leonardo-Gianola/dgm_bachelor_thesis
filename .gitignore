@@ -3,6 +3,9 @@ __pycache__/
 .DS_Store
 venv/
 
+# Claude Code local settings
+.claude/settings.local.json
+
 logs/
 !initial/logs/
 swe_bench/predictions/
