@@ -10,13 +10,24 @@ from llm import create_client, get_model_family_name, get_response_from_llm
 from prompts.tooluse_prompt import get_tooluse_prompt
 from tools import load_all_tools
 
-CLAUDE_MODEL = 'openrouter/openai/gpt-5-mini'
-OPENAI_MODEL = 'openrouter/openai/gpt-5-mini'
+CLAUDE_MODEL = 'openrouter/minimax/minimax-m2.5'
+OPENAI_MODEL = 'openrouter/minimax/minimax-m2.5'
 
 
 def is_openai_tool_model(model: str) -> bool:
     model_family = get_model_family_name(model)
     return model_family.startswith('o3-') or model_family.startswith('gpt-5-')
+
+
+def is_minimax_model(model: str) -> bool:
+    return get_model_family_name(model).startswith('minimax-')
+
+
+def strip_thinking_tags(text: str) -> str:
+    """Strip mandatory <think>...</think> reasoning tags from MiniMax responses."""
+    if not text:
+        return text
+    return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
 
 def get_openai_function_call(response):
@@ -127,6 +138,14 @@ def get_response_withtools(
                 tool_choice=tool_choice,
                 tools=tools,
             )
+        elif is_minimax_model(model):
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                max_tokens=8192,
+            )
         elif is_openai_tool_model(model):
             response = client.responses.create(
                 model=model,
@@ -162,6 +181,17 @@ def check_for_tool_use(response, model=''):
                 'tool_id': tool_use_block.id,
                 'tool_name': tool_use_block.name,
                 'tool_input': tool_use_block.input,
+            }
+
+    elif is_minimax_model(model):
+        # MiniMax via chat.completions: check tool_calls on message
+        msg = response.choices[0].message
+        if msg.tool_calls:
+            tc = msg.tool_calls[0]
+            return {
+                'tool_id': tc.id,
+                'tool_name': tc.function.name,
+                'tool_input': json.loads(tc.function.arguments),
             }
 
     elif is_openai_tool_model(model):
@@ -201,6 +231,16 @@ def convert_tool_info(tool_info, model=None):
             'description': tool_info['description'],
             'input_schema': tool_info['input_schema'],
         }
+    elif is_minimax_model(model):
+        # MiniMax via OpenRouter: standard chat.completions tool format, no strict mode
+        return {
+            'type': 'function',
+            'function': {
+                'name': tool_info['name'],
+                'description': tool_info['description'],
+                'parameters': tool_info['input_schema'],
+            },
+        }
     elif is_openai_tool_model(model):
         def add_additional_properties(d):
             if isinstance(d, dict):
@@ -217,7 +257,7 @@ def convert_tool_info(tool_info, model=None):
                     tool_info['input_schema']['properties'][p]["type"] = [t, "null"]
                 elif isinstance(t, list):
                     tool_info['input_schema']['properties'][p]["type"] = t + ["null"]
-                
+
         return {
             'type': 'function',
             'name': tool_info['name'],
@@ -666,6 +706,100 @@ def chat_with_agent_openai(
         return new_msg_history, total_usage
     return new_msg_history
 
+def chat_with_agent_minimax(
+        msg,
+        model=OPENAI_MODEL,
+        msg_history=None,
+        logging=print,
+        return_usage=False,
+    ):
+    """
+    MiniMax via OpenRouter: uses chat.completions with standard tool_calls format.
+    Strips mandatory <think>...</think> tags from all content before storing.
+    """
+    if msg_history is None:
+        msg_history = []
+
+    system_message = f'You are a coding agent.\n\n{get_tooluse_prompt()}'
+    new_msg_history = [{"role": "user", "content": msg}]
+
+    # Build full messages list (system + history + new user turn)
+    messages = [{"role": "system", "content": system_message}] + msg_history + new_msg_history
+
+    total_usage = empty_usage()
+    try:
+        client, client_model = create_client(model)
+        all_tools = load_all_tools(logging=logging)
+        tools_dict = {tool['info']['name']: tool for tool in all_tools}
+        tools = [convert_tool_info(tool['info'], model=client_model) for tool in all_tools]
+
+        response = get_response_withtools(
+            client=client,
+            model=client_model,
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            logging=logging,
+        )
+        total_usage = merge_usage(total_usage, extract_response_usage(response))
+
+        tool_use = check_for_tool_use(response, model=client_model)
+        while tool_use:
+            tool_name = tool_use['tool_name']
+            tool_input = tool_use['tool_input']
+            tool_result = process_tool_call(tools_dict, tool_name, tool_input)
+            logging(f"Tool Used: {tool_name}\nTool Input: {tool_input}\nTool Result: {tool_result}")
+
+            # Append full assistant message (with tool_calls) — required by MiniMax for reasoning chain
+            raw_msg = response.choices[0].message
+            assistant_msg = {
+                "role": "assistant",
+                "content": strip_thinking_tags(raw_msg.content or ""),
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in (raw_msg.tool_calls or [])
+                ],
+            }
+            tool_result_msg = {
+                "role": "tool",
+                "tool_call_id": tool_use['tool_id'],
+                "content": serialize_tool_output(tool_result),
+            }
+            messages.append(assistant_msg)
+            messages.append(tool_result_msg)
+            new_msg_history.append(assistant_msg)
+            new_msg_history.append(tool_result_msg)
+
+            response = get_response_withtools(
+                client=client,
+                model=client_model,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                logging=logging,
+            )
+            total_usage = merge_usage(total_usage, extract_response_usage(response))
+            tool_use = check_for_tool_use(response, model=client_model)
+
+        # Final assistant message (no tool calls)
+        final_content = strip_thinking_tags(response.choices[0].message.content or "")
+        final_msg = {"role": "assistant", "content": final_content}
+        messages.append(final_msg)
+        new_msg_history.append(final_msg)
+
+    except Exception as e:
+        logging(f"Error in chat_with_agent_minimax: {str(e)}")
+        raise
+
+    if return_usage:
+        return new_msg_history, total_usage
+    return new_msg_history
+
+
 def chat_with_agent(
     msg,
     model=CLAUDE_MODEL,
@@ -693,6 +827,20 @@ def chat_with_agent(
         logging(conv_msg_history)
         if convert:
             new_msg_history = conv_msg_history
+        new_msg_history = msg_history + new_msg_history
+
+    elif is_minimax_model(model):
+        # MiniMax models via OpenRouter (chat.completions with tool_calls)
+        new_msg_history = chat_with_agent_minimax(
+            msg,
+            model=model,
+            msg_history=msg_history,
+            logging=logging,
+            return_usage=return_usage,
+        )
+        usage = None
+        if return_usage:
+            new_msg_history, usage = new_msg_history
         new_msg_history = msg_history + new_msg_history
 
     elif is_openai_tool_model(model):

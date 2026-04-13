@@ -42,6 +42,8 @@ AVAILABLE_LLMS = [
     "deepseek-chat",
     "deepseek-coder",
     "deepseek-reasoner",
+    # MiniMax models via OpenRouter
+    "openrouter/minimax/minimax-m2.5",
 ]
 
 
@@ -81,6 +83,17 @@ def is_openai_chat_model(model: str) -> bool:
 def is_openai_model(model: str) -> bool:
     model_family = get_model_family_name(model)
     return model_family.startswith("gpt-") or model_family.startswith("o1-") or model_family.startswith("o3-")
+
+
+def is_minimax_model(model: str) -> bool:
+    return get_model_family_name(model).startswith("minimax-")
+
+
+def _strip_thinking_tags(text: str) -> str:
+    """Strip mandatory <think>...</think> reasoning tags from MiniMax responses."""
+    if not text:
+        return text
+    return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
 def create_client(model: str):
     """
@@ -320,6 +333,20 @@ def get_response_from_llm(
         content = response.choices[0].message.content
         new_msg_history = new_msg_history + [{"role": "assistant", "content": content}]
         reasoning_content = response.choices[0].message.reasoning_content
+    elif is_minimax_model(model):
+        new_msg_history = msg_history + [{"role": "user", "content": msg}]
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_message},
+                *new_msg_history,
+            ],
+            temperature=temperature,
+            max_tokens=MAX_OUTPUT_TOKENS,
+            n=1,
+        )
+        content = _strip_thinking_tags(response.choices[0].message.content or "")
+        new_msg_history = new_msg_history + [{"role": "assistant", "content": content}]
     elif model.startswith("llama3.1-"):
         llama_size = model.split("-")[-1]
         client_model = f"meta-llama/llama-3.1-{llama_size}-instruct"
