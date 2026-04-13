@@ -63,6 +63,9 @@ def preds_to_jsonl(dname, predictions):
     dname = Path(dname)
 
     predictions_jsonl = str(dname / "all_preds.jsonl")
+    if not predictions:
+        open(predictions_jsonl, "w").close()
+        return predictions_jsonl
     model_name_or_path = list(predictions.values())[0]["model_name_or_path"]
     with open(predictions_jsonl, "w", encoding="utf-8") as fh:
         for pred in predictions.values():
