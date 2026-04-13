@@ -28,3 +28,5 @@ polyglot/predictions/
 
 final_results/
 analysis/output/
+
+experiments/state/

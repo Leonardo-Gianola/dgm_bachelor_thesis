@@ -188,10 +188,15 @@ def check_for_tool_use(response, model=''):
         msg = response.choices[0].message
         if msg.tool_calls:
             tc = msg.tool_calls[0]
+            try:
+                tool_input = json.loads(tc.function.arguments)
+            except json.JSONDecodeError:
+                # MiniMax occasionally returns malformed JSON arguments; skip this tool call
+                return None
             return {
                 'tool_id': tc.id,
                 'tool_name': tc.function.name,
-                'tool_input': json.loads(tc.function.arguments),
+                'tool_input': tool_input,
             }
 
     elif is_openai_tool_model(model):

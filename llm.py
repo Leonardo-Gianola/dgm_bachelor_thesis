@@ -420,6 +420,9 @@ def extract_json_between_markers(llm_output):
 
     # Join all lines in the JSON block into a single string
     json_string = "\n".join(json_lines).strip()
+    # Strip <JSON>...</JSON> wrapper tags that MiniMax sometimes inserts
+    json_string = re.sub(r'^\s*<JSON>\s*', '', json_string)
+    json_string = re.sub(r'\s*</JSON>\s*$', '', json_string).strip()
     
     # Try to parse the collected JSON lines
     try:
