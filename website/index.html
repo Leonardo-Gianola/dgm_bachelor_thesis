@@ -3,2085 +3,1115 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Darwin Gödel Machine — Bachelor Thesis</title>
+<title>Can We Make AI Self-Improvement Cheap? — Gianola 2026</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Space+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="chart.min.js"></script>
 <style>
-  :root {
-    --bg: #050a0f;
-    --surface: #0a1628;
-    --surface2: #0d1f3a;
-    --cyan: #00d4ff;
-    --purple: #7b2fff;
-    --green: #00ff88;
-    --red: #ff4466;
-    --text: #e8f4f8;
-    --muted: #6b8fa3;
-    --border: rgba(0,212,255,0.2);
-    --glow: rgba(0,212,255,0.15);
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  html { scroll-behavior: smooth; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Space Grotesk', sans-serif;
-    overflow-x: hidden;
-    line-height: 1.6;
-  }
-
-  /* ─── SCROLL PROGRESS ─────────────────────────────── */
-  #progress-bar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    height: 2px;
-    background: linear-gradient(90deg, var(--cyan), var(--purple));
-    z-index: 9999;
-    width: 0%;
-    transition: width 0.1s ease;
-    box-shadow: 0 0 8px var(--cyan);
-  }
-
-  /* ─── NAV ─────────────────────────────────────────── */
-  nav {
-    position: fixed;
-    top: 2px;
-    left: 0;
-    right: 0;
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 2rem;
-    height: 56px;
-    background: rgba(5, 10, 15, 0.85);
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .nav-logo {
-    font-family: 'Orbitron', sans-serif;
-    font-weight: 700;
-    font-size: 1rem;
-    color: var(--cyan);
-    letter-spacing: 0.1em;
-    text-decoration: none;
-  }
-
-  .nav-logo span { color: var(--purple); }
-
-  .nav-links {
-    display: flex;
-    gap: 2rem;
-    list-style: none;
-  }
-
-  .nav-links a {
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 0.8rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    transition: color 0.2s;
-    font-weight: 500;
-  }
-
-  .nav-links a:hover { color: var(--cyan); }
-
-  /* ─── HERO ────────────────────────────────────────── */
-  #hero {
-    position: relative;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 6rem 2rem 4rem;
-    overflow: hidden;
-  }
-
-  #hero-canvas {
-    position: absolute;
-    inset: 0;
-    opacity: 0.6;
-  }
-
-  .hero-content { position: relative; z-index: 1; max-width: 900px; }
-
-  .hero-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.3rem 1rem;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    font-size: 0.72rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--cyan);
-    margin-bottom: 1.5rem;
-    background: rgba(0,212,255,0.05);
-  }
-
-  .hero-badge::before {
-    content: '';
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--cyan);
-    animation: pulse 2s infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0,212,255,0.4); }
-    50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(0,212,255,0); }
-  }
-
-  .hero-title {
-    font-family: 'Orbitron', sans-serif;
-    font-size: clamp(2.5rem, 7vw, 5.5rem);
-    font-weight: 900;
-    line-height: 1.1;
-    margin-bottom: 0.5rem;
-    background: linear-gradient(135deg, #fff 0%, var(--cyan) 50%, var(--purple) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  .hero-subtitle {
-    font-size: clamp(1rem, 2.5vw, 1.4rem);
-    color: var(--muted);
-    margin-bottom: 0.5rem;
-    font-weight: 300;
-  }
-
-  .hero-authors {
-    font-size: 0.85rem;
-    color: var(--muted);
-    margin-bottom: 3rem;
-    opacity: 0.7;
-  }
-
-  .hero-stats {
-    display: flex;
-    gap: 1.5rem;
-    justify-content: center;
-    flex-wrap: wrap;
-    margin-bottom: 3rem;
-  }
-
-  .stat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.2rem 1.8rem;
-    min-width: 140px;
-    position: relative;
-    overflow: hidden;
-    transition: transform 0.3s, box-shadow 0.3s;
-  }
-
-  .stat-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 32px rgba(0,212,255,0.2);
-  }
-
-  .stat-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, var(--cyan), var(--purple));
-  }
-
-  .stat-value {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: var(--cyan);
-    display: block;
-  }
-
-  .stat-label {
-    font-size: 0.72rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-top: 0.25rem;
-    display: block;
-  }
-
-  .hero-cta {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.8rem 2rem;
-    background: linear-gradient(135deg, var(--cyan), var(--purple));
-    border-radius: 6px;
-    font-weight: 600;
-    text-decoration: none;
-    color: var(--bg);
-    font-size: 0.9rem;
-    letter-spacing: 0.05em;
-    transition: opacity 0.2s, transform 0.2s;
-  }
-
-  .hero-cta:hover { opacity: 0.85; transform: translateY(-2px); }
-
-  /* ─── SECTION COMMON ──────────────────────────────── */
-  section {
-    padding: 6rem 2rem;
-    max-width: 1100px;
-    margin: 0 auto;
-  }
-
-  .section-tag {
-    font-size: 0.7rem;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--cyan);
-    margin-bottom: 0.5rem;
-    font-family: 'JetBrains Mono', monospace;
-    opacity: 0.8;
-  }
-
-  .section-title {
-    font-family: 'Orbitron', sans-serif;
-    font-size: clamp(1.6rem, 4vw, 2.5rem);
-    font-weight: 700;
-    margin-bottom: 1rem;
-    line-height: 1.2;
-  }
-
-  .section-title .accent { color: var(--cyan); }
-
-  .divider {
-    height: 1px;
-    background: linear-gradient(90deg, var(--cyan) 0%, var(--purple) 50%, transparent 100%);
-    margin-bottom: 3rem;
-    opacity: 0.4;
-  }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.5rem;
-    transition: border-color 0.3s, box-shadow 0.3s;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .card:hover {
-    border-color: rgba(0,212,255,0.4);
-    box-shadow: 0 0 24px rgba(0,212,255,0.1);
-  }
-
-  /* ─── FADE-IN ON SCROLL ───────────────────────────── */
-  .reveal {
-    opacity: 0;
-    transform: translateY(30px);
-    transition: opacity 0.7s ease, transform 0.7s ease;
-  }
-
-  .reveal.visible {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  /* ─── ABSTRACT ────────────────────────────────────── */
-  #abstract {
-    background: linear-gradient(180deg, rgba(0,212,255,0.03) 0%, transparent 100%);
-    border-top: 1px solid var(--border);
-  }
-
-  #abstract > * { max-width: 1100px; margin-left: auto; margin-right: auto; }
-
-  .abstract-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-    max-width: 1100px;
-  }
-
-  .abstract-text {
-    font-size: 1rem;
-    line-height: 1.9;
-    color: var(--text);
-    opacity: 0.9;
-  }
-
-  .abstract-text .highlight {
-    color: var(--cyan);
-    font-weight: 500;
-  }
-
-  .key-terms {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .term-chip {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    font-size: 0.85rem;
-  }
-
-  .term-chip .icon {
-    font-size: 1.2rem;
-    flex-shrink: 0;
-    margin-top: 0.1rem;
-  }
-
-  .term-chip strong {
-    color: var(--cyan);
-    display: block;
-    font-size: 0.8rem;
-    margin-bottom: 0.1rem;
-  }
-
-  .term-chip p { color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
-
-  /* ─── METHOD ──────────────────────────────────────── */
-  .walkthrough {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 2rem;
-    margin-bottom: 3rem;
-  }
-
-  .walkthrough-steps {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 2rem;
-    flex-wrap: wrap;
-  }
-
-  .step-btn {
-    flex: 1;
-    min-width: 80px;
-    padding: 0.5rem 0.5rem;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--muted);
-    font-size: 0.72rem;
-    font-family: 'Space Grotesk', sans-serif;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-align: center;
-    letter-spacing: 0.05em;
-  }
-
-  .step-btn.active {
-    background: rgba(0,212,255,0.1);
-    border-color: var(--cyan);
-    color: var(--cyan);
-  }
-
-  .step-content {
-    display: none;
-    animation: fadeInUp 0.4s ease;
-  }
-
-  .step-content.active { display: block; }
-
-  @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  .step-header {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .step-number {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--cyan), var(--purple));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Orbitron', sans-serif;
-    font-weight: 700;
-    font-size: 1rem;
-    color: var(--bg);
-    flex-shrink: 0;
-  }
-
-  .step-title {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 1.1rem;
-    color: var(--text);
-  }
-
-  .step-desc {
-    color: var(--muted);
-    font-size: 0.95rem;
-    line-height: 1.7;
-    margin-bottom: 1rem;
-  }
-
-  .step-detail {
-    background: var(--surface2);
-    border-left: 3px solid var(--cyan);
-    padding: 1rem 1.25rem;
-    border-radius: 0 8px 8px 0;
-    font-size: 0.88rem;
-    color: var(--text);
-    line-height: 1.6;
-  }
-
-  .step-nav {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 1.5rem;
-  }
-
-  .nav-btn {
-    padding: 0.5rem 1.25rem;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: transparent;
-    color: var(--cyan);
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 0.85rem;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .nav-btn:hover {
-    background: rgba(0,212,255,0.1);
-    border-color: var(--cyan);
-  }
-
-  .nav-btn:disabled {
-    opacity: 0.3;
-    cursor: default;
-  }
-
-  .schedulers-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 1rem;
-  }
-
-  .scheduler-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1.25rem;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.3s;
-  }
-
-  .scheduler-card:hover {
-    border-color: rgba(0,212,255,0.5);
-    box-shadow: 0 0 20px rgba(0,212,255,0.1);
-    transform: translateY(-3px);
-  }
-
-  .scheduler-card::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-  }
-
-  .scheduler-card.baseline::after { background: var(--muted); }
-  .scheduler-card.ga::after { background: var(--cyan); }
-  .scheduler-card.asha::after { background: var(--purple); }
-  .scheduler-card.hyperband::after { background: var(--green); }
-
-  .scheduler-name {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 0.85rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
-  }
-
-  .scheduler-card.baseline .scheduler-name { color: var(--muted); }
-  .scheduler-card.ga .scheduler-name { color: var(--cyan); }
-  .scheduler-card.asha .scheduler-name { color: var(--purple); }
-  .scheduler-card.hyperband .scheduler-name { color: var(--green); }
-
-  .scheduler-desc {
-    font-size: 0.8rem;
-    color: var(--muted);
-    line-height: 1.5;
-  }
-
-  /* ─── BENCHMARKS ──────────────────────────────────── */
-  .benchmark-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-    margin-bottom: 3rem;
-  }
-
-  .benchmark-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.75rem;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .benchmark-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-  }
-
-  .benchmark-card.swe::before { background: linear-gradient(90deg, var(--cyan), var(--purple)); }
-  .benchmark-card.poly::before { background: linear-gradient(90deg, var(--purple), var(--green)); }
-
-  .benchmark-name {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--text);
-    margin-bottom: 0.25rem;
-  }
-
-  .benchmark-meta {
-    font-size: 0.78rem;
-    color: var(--muted);
-    margin-bottom: 1rem;
-    font-family: 'JetBrains Mono', monospace;
-  }
-
-  .benchmark-stat {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.4rem 0;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-    font-size: 0.85rem;
-  }
-
-  .benchmark-stat:last-child { border-bottom: none; }
-  .benchmark-stat span:first-child { color: var(--muted); }
-  .benchmark-stat span:last-child { color: var(--cyan); font-family: 'JetBrains Mono', monospace; }
-
-  .lang-bars { margin-top: 1.2rem; }
-  .lang-bar-row {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 0.5rem;
-    font-size: 0.8rem;
-  }
-  .lang-name { width: 80px; color: var(--muted); font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
-  .lang-track { flex: 1; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; }
-  .lang-fill { height: 100%; border-radius: 3px; width: 0; transition: width 1.2s cubic-bezier(0.4,0,0.2,1); }
-  .lang-count { width: 24px; text-align: right; color: var(--text); font-family: 'JetBrains Mono', monospace; }
-
-  /* ─── RESULTS ─────────────────────────────────────── */
-  .results-metrics {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1.25rem;
-    margin-bottom: 2.5rem;
-  }
-
-  .metric-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1.25rem;
-    text-align: center;
-    transition: all 0.3s;
-  }
-
-  .metric-card:hover {
-    border-color: rgba(0,212,255,0.4);
-    box-shadow: 0 0 20px rgba(0,212,255,0.1);
-  }
-
-  .metric-value {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--cyan);
-    display: block;
-    margin-bottom: 0.25rem;
-  }
-
-  .metric-value.green { color: var(--green); }
-  .metric-value.purple { color: var(--purple); }
-
-  .metric-label {
-    font-size: 0.75rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-  }
-
-  .chart-container {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.75rem;
-    margin-bottom: 2rem;
-    position: relative;
-  }
-
-  .chart-title {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 0.85rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 1.25rem;
-  }
-
-  .results-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.88rem;
-    margin-top: 2rem;
-  }
-
-  .results-table th {
-    text-align: left;
-    padding: 0.75rem 1rem;
-    background: var(--surface2);
-    color: var(--cyan);
-    font-family: 'Orbitron', sans-serif;
-    font-size: 0.72rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .results-table td {
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.85rem;
-  }
-
-  .results-table tr:hover td { background: rgba(0,212,255,0.03); }
-
-  .delta-positive {
-    color: var(--green);
-    font-weight: 600;
-  }
-
-  .delta-neutral { color: var(--muted); }
-
-  /* ─── EVOLUTION TIMELINE ──────────────────────────── */
-  .timeline {
-    position: relative;
-    padding-left: 3rem;
-  }
-
-  .timeline::before {
-    content: '';
-    position: absolute;
-    left: 12px;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    background: linear-gradient(180deg, var(--cyan), var(--purple), rgba(0,212,255,0.1));
-  }
-
-  .timeline-item {
-    position: relative;
-    margin-bottom: 2.5rem;
-    opacity: 0;
-    transform: translateX(-20px);
-    transition: opacity 0.6s ease, transform 0.6s ease;
-  }
-
-  .timeline-item.visible {
-    opacity: 1;
-    transform: translateX(0);
-  }
-
-  .timeline-dot {
-    position: absolute;
-    left: -2.62rem;
-    top: 0.5rem;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--bg);
-    border: 2px solid var(--cyan);
-    box-shadow: 0 0 12px var(--cyan);
-  }
-
-  .timeline-dot.initial { border-color: var(--muted); box-shadow: none; }
-  .timeline-dot.gen0 { border-color: var(--cyan); }
-
-  .timeline-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1.25rem;
-    transition: all 0.3s;
-  }
-
-  .timeline-card:hover {
-    border-color: rgba(0,212,255,0.4);
-    box-shadow: 0 0 20px rgba(0,212,255,0.08);
-  }
-
-  .timeline-gen {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 0.72rem;
-    color: var(--cyan);
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    margin-bottom: 0.25rem;
-  }
-
-  .timeline-event {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: 0.5rem;
-  }
-
-  .timeline-detail {
-    font-size: 0.85rem;
-    color: var(--muted);
-    line-height: 1.6;
-    margin-bottom: 0.75rem;
-  }
-
-  .timeline-badges {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.2rem 0.6rem;
-    border-radius: 999px;
-    font-size: 0.72rem;
-    font-family: 'JetBrains Mono', monospace;
-    letter-spacing: 0.05em;
-  }
-
-  .badge.score {
-    background: rgba(0,212,255,0.1);
-    border: 1px solid rgba(0,212,255,0.3);
-    color: var(--cyan);
-  }
-
-  .badge.delta {
-    background: rgba(0,255,136,0.1);
-    border: 1px solid rgba(0,255,136,0.3);
-    color: var(--green);
-  }
-
-  .badge.model {
-    background: rgba(123,47,255,0.1);
-    border: 1px solid rgba(123,47,255,0.3);
-    color: var(--purple);
-  }
-
-  .badge.neutral {
-    background: rgba(107,143,163,0.1);
-    border: 1px solid rgba(107,143,163,0.2);
-    color: var(--muted);
-  }
-
-  /* ─── ARCHITECTURE ────────────────────────────────── */
-  .arch-diagram {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0;
-    margin: 2rem 0;
-    flex-wrap: wrap;
-    position: relative;
-  }
-
-  .arch-node {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.25rem 1.5rem;
-    text-align: center;
-    min-width: 150px;
-    position: relative;
-    transition: all 0.3s;
-    z-index: 1;
-  }
-
-  .arch-node.active-node {
-    border-color: var(--cyan);
-    box-shadow: 0 0 24px rgba(0,212,255,0.2);
-  }
-
-  .arch-node .node-icon {
-    font-size: 1.8rem;
-    margin-bottom: 0.5rem;
-    display: block;
-  }
-
-  .arch-node .node-label {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: var(--cyan);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 0.25rem;
-  }
-
-  .arch-node .node-desc {
-    font-size: 0.75rem;
-    color: var(--muted);
-    line-height: 1.4;
-  }
-
-  .arch-arrow {
-    display: flex;
-    align-items: center;
-    padding: 0 0.75rem;
-    color: var(--cyan);
-    font-size: 1.5rem;
-    opacity: 0.6;
-    position: relative;
-  }
-
-  .arch-arrow.animated::after {
-    content: '';
-    position: absolute;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--cyan);
-    animation: travel 2s infinite;
-    box-shadow: 0 0 6px var(--cyan);
-  }
-
-  @keyframes travel {
-    0% { left: 0; opacity: 0; }
-    20% { opacity: 1; }
-    80% { opacity: 1; }
-    100% { left: calc(100% - 8px); opacity: 0; }
-  }
-
-  .dual-level {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-    margin: 3rem 0;
-  }
-
-  .level-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.5rem;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .level-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-  }
-
-  .level-card.level1::before { background: linear-gradient(90deg, var(--cyan), transparent); }
-  .level-card.level2::before { background: linear-gradient(90deg, var(--purple), transparent); }
-
-  .level-title {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 0.8rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
-    letter-spacing: 0.1em;
-  }
-
-  .level-card.level1 .level-title { color: var(--cyan); }
-  .level-card.level2 .level-title { color: var(--purple); }
-
-  .level-desc { font-size: 0.88rem; color: var(--muted); line-height: 1.6; }
-
-  /* ─── RELATED WORK ────────────────────────────────── */
-  .related-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1rem;
-  }
-
-  .related-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1.25rem;
-    transition: all 0.3s;
-  }
-
-  .related-card:hover {
-    border-color: rgba(0,212,255,0.3);
-    transform: translateY(-3px);
-  }
-
-  .related-card .r-title {
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--text);
-    margin-bottom: 0.4rem;
-  }
-
-  .related-card .r-desc {
-    font-size: 0.8rem;
-    color: var(--muted);
-    line-height: 1.5;
-  }
-
-  .related-card .r-tag {
-    display: inline-block;
-    margin-top: 0.75rem;
-    font-size: 0.68rem;
-    padding: 0.15rem 0.5rem;
-    background: rgba(0,212,255,0.08);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    color: var(--cyan);
-    font-family: 'JetBrains Mono', monospace;
-  }
-
-  /* ─── CONCLUSION ──────────────────────────────────── */
-  .conclusion-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-    margin-bottom: 3rem;
-  }
-
-  .conclusion-col h3 {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 0.85rem;
-    color: var(--cyan);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .conclusion-col.future h3 { color: var(--purple); }
-
-  .conclusion-list {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .conclusion-list li {
-    display: flex;
-    gap: 0.75rem;
-    font-size: 0.88rem;
-    color: var(--muted);
-    line-height: 1.5;
-  }
-
-  .conclusion-list li::before {
-    content: '▸';
-    color: var(--cyan);
-    flex-shrink: 0;
-    margin-top: 0.1rem;
-  }
-
-  .conclusion-col.future .conclusion-list li::before { color: var(--purple); }
-
-  .bibtex {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1.5rem;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.78rem;
-    color: var(--muted);
-    line-height: 1.7;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .bibtex::before {
-    content: 'BIBTEX';
-    position: absolute;
-    top: 0.75rem;
-    right: 1rem;
-    font-size: 0.65rem;
-    color: var(--cyan);
-    letter-spacing: 0.15em;
-    opacity: 0.6;
-  }
-
-  .bibtex .bib-key { color: var(--cyan); }
-  .bibtex .bib-field { color: var(--purple); }
-  .bibtex .bib-value { color: var(--green); }
-
-  /* ─── FOOTER ──────────────────────────────────────── */
-  footer {
-    border-top: 1px solid var(--border);
-    padding: 2rem;
-    text-align: center;
-    font-size: 0.8rem;
-    color: var(--muted);
-    background: rgba(0,212,255,0.02);
-  }
-
-  footer a { color: var(--cyan); text-decoration: none; }
-  footer a:hover { text-decoration: underline; }
-
-  /* ─── RESPONSIVE ──────────────────────────────────── */
-  @media (max-width: 768px) {
-    .abstract-grid,
-    .benchmark-grid,
-    .dual-level,
-    .conclusion-grid,
-    .results-metrics { grid-template-columns: 1fr; }
-
-    .nav-links { display: none; }
-
-    .walkthrough-steps {
-      gap: 0.3rem;
-    }
-
-    .step-btn { font-size: 0.65rem; padding: 0.4rem 0.3rem; }
-  }
-
-  /* ─── SCANLINE EFFECT ─────────────────────────────── */
-  #hero::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,0.03) 2px,
-      rgba(0,0,0,0.03) 4px
-    );
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  /* ─── GRID SEPARATOR ──────────────────────────────── */
-  .section-separator {
-    width: 100%;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--border) 20%, var(--border) 80%, transparent);
-    max-width: 1100px;
-    margin: 0 auto;
-  }
-
-  /* Corner decorations */
-  .card-corner {
-    position: relative;
-  }
-
-  .card-corner::before,
-  .card-corner::after {
-    content: '';
-    position: absolute;
-    width: 12px;
-    height: 12px;
-    border-color: var(--cyan);
-    border-style: solid;
-    opacity: 0.5;
-  }
-
-  .card-corner::before {
-    top: -1px;
-    left: -1px;
-    border-width: 1px 0 0 1px;
-  }
-
-  .card-corner::after {
-    bottom: -1px;
-    right: -1px;
-    border-width: 0 1px 1px 0;
-  }
-
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: #fff;
+  color: #1a1a1a;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 16.5px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scheduler colors (used everywhere) ───────────────── */
+:root {
+  --c-baseline: #71717a;
+  --c-hyperband: #2563eb;
+  --c-asha: #d97706;
+  --c-ga: #16a34a;
+  --c-baseline-bg: #f4f4f5;
+  --c-hyperband-bg: #eff6ff;
+  --c-asha-bg: #fffbeb;
+  --c-ga-bg: #f0fdf4;
+}
+
+/* ── Layout ───────────────────────────────────────────── */
+.col     { max-width: 1060px; margin: 0 auto; padding: 0 2rem; }
+.col-narrow { max-width: 720px; margin: 0 auto; padding: 0 2rem; }
+
+/* ── Nav ──────────────────────────────────────────────── */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(255,255,255,0.95);
+  border-bottom: 1px solid #eee;
+}
+nav .inner {
+  max-width: 1060px; margin: 0 auto; padding: 0.5rem 2rem;
+  display: flex; align-items: center; gap: 0.1rem; overflow-x: auto;
+}
+nav a {
+  font-size: 0.78rem; color: #999; text-decoration: none;
+  padding: 0.2rem 0.55rem; white-space: nowrap; transition: color 0.15s;
+}
+nav a:hover { color: #1a1a1a; }
+.nav-spacer { flex: 1; }
+nav .ext { color: #2563eb; }
+
+/* ── Typography ───────────────────────────────────────── */
+h2 {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 1.65rem; font-weight: 700;
+  line-height: 1.25; margin-bottom: 0.6rem;
+  letter-spacing: -0.01em;
+}
+h3 {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 1.15rem; font-weight: 700;
+  margin-top: 1.75rem; margin-bottom: 0.4rem;
+}
+p { margin-bottom: 0.9rem; }
+a { color: #2563eb; }
+.num { font-family: 'JetBrains Mono', monospace; font-weight: 500; }
+.big-num { font-family: 'JetBrains Mono', monospace; font-size: 1.15em; font-weight: 600; }
+.break { text-align: center; padding: 2.5rem 0; color: #ccc; letter-spacing: 0.5em; }
+section { padding-bottom: 0.5rem; }
+
+/* ── Header ───────────────────────────────────────────── */
+header { padding: 3.5rem 0 0; margin-bottom: 0; }
+.header-inner {
+  max-width: 720px;
+}
+header h1 {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 2.3rem; font-weight: 700; line-height: 1.2;
+  margin-bottom: 0.6rem; letter-spacing: -0.01em;
+}
+header .subtitle { font-size: 1.08rem; color: #666; margin-bottom: 1rem; line-height: 1.6; }
+header .meta { font-size: 0.88rem; color: #999; }
+header .meta strong { color: #555; font-weight: 600; }
+header .meta a { color: #2563eb; text-decoration: none; }
+header .meta a:hover { text-decoration: underline; }
+header .actions { margin-top: 1rem; display: flex; gap: 0.6rem; margin-bottom: 2.5rem; }
+header .btn {
+  font-size: 0.85rem; font-weight: 500; text-decoration: none;
+  padding: 0.4rem 1rem; border: 1px solid #d0d0d0; color: #444;
+  transition: all 0.15s;
+}
+header .btn:hover { border-color: #999; color: #1a1a1a; }
+header .btn-accent { border-color: #2563eb; color: #2563eb; }
+header .btn-accent:hover { background: #2563eb; color: #fff; }
+
+/* ── Hero DGM Loop Diagram ────────────────────────────── */
+.hero-diagram {
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  padding: 2.5rem 2rem;
+  margin-bottom: 2.5rem;
+  position: relative;
+}
+.hero-diagram-title {
+  font-size: 0.72rem; font-weight: 600; color: #999;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  margin-bottom: 1.5rem; text-align: center;
+}
+.loop-flow {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0; flex-wrap: nowrap;
+}
+.loop-node {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 1rem 1.5rem;
+  position: relative; min-width: 120px;
+}
+.loop-icon {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem;
+  margin-bottom: 0.5rem;
+  border: 2px solid #ddd;
+  background: #fff;
+  transition: border-color 0.2s;
+}
+.loop-node:hover .loop-icon { border-color: #999; }
+.loop-label { font-size: 0.82rem; font-weight: 600; color: #1a1a1a; text-align: center; }
+.loop-sub { font-size: 0.72rem; color: #999; text-align: center; margin-top: 0.1rem; }
+.loop-arrow {
+  font-size: 1.25rem; color: #ccc; flex-shrink: 0;
+  display: flex; align-items: center; padding: 0 0.25rem;
+}
+.loop-return {
+  text-align: center; margin-top: 0.75rem;
+  font-size: 0.78rem; color: #bbb; font-style: italic;
+}
+
+/* ── Two-col layout ───────────────────────────────────── */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2.5rem;
+  align-items: start;
+}
+.two-col-text-chart {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 2.5rem;
+  align-items: start;
+}
+
+/* ── Callout ──────────────────────────────────────────── */
+.callout {
+  border-left: 3px solid #2563eb; padding: 0.85rem 1.1rem;
+  margin: 1rem 0 1.25rem; background: #f8fafc;
+}
+.callout p { margin-bottom: 0; }
+.callout .formula {
+  font-family: 'JetBrains Mono', monospace; font-size: 0.95rem;
+  color: #2563eb; margin-bottom: 0.4rem; display: block;
+}
+
+/* ── Big stats banner ─────────────────────────────────── */
+.stats-banner {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  border: 1px solid #e5e5e5;
+  margin: 1.5rem 0;
+}
+.stat-big {
+  text-align: center;
+  padding: 1.5rem 1rem;
+  border-right: 1px solid #e5e5e5;
+}
+.stat-big:last-child { border-right: none; }
+.stat-big-v {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 2rem; font-weight: 700;
+  display: block; line-height: 1.1;
+}
+.stat-big-l {
+  font-size: 0.72rem; color: #999;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin-top: 0.35rem; display: block;
+}
+
+/* ── Details ──────────────────────────────────────────── */
+details {
+  margin: 0.75rem 0 1.25rem;
+  border: 1px solid #eee;
+}
+details summary {
+  font-size: 0.85rem; font-weight: 500; color: #888;
+  cursor: pointer; padding: 0.6rem 1rem;
+  list-style: none; transition: color 0.15s;
+}
+details summary::-webkit-details-marker { display: none; }
+details summary::before { content: '▸ '; font-size: 0.75rem; }
+details[open] summary::before { content: '▾ '; }
+details[open] summary { color: #555; border-bottom: 1px solid #eee; }
+details summary:hover { color: #1a1a1a; }
+.det-body {
+  padding: 1rem; font-size: 0.9rem; color: #444; line-height: 1.7;
+}
+.det-body p:last-child { margin-bottom: 0; }
+.det-body code {
+  font-family: 'JetBrains Mono', monospace; font-size: 0.85em;
+  background: #f5f5f5; padding: 0.1em 0.35em;
+}
+.det-body strong { color: #1a1a1a; }
+
+/* ── Simple table ─────────────────────────────────────── */
+table.simple { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin: 0.5rem 0; }
+table.simple th {
+  text-align: left; font-size: 0.72rem; font-weight: 600; color: #999;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 0.45rem 0.6rem; border-bottom: 2px solid #ddd;
+}
+table.simple td { padding: 0.5rem 0.6rem; border-bottom: 1px solid #eee; color: #444; }
+table.simple td.num { font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
+
+/* ── Architecture pipeline diagram ────────────────────── */
+.pipeline {
+  background: #fafafa; border: 1px solid #e5e5e5;
+  padding: 2rem; margin: 1.5rem 0;
+}
+.pipeline-title {
+  font-size: 0.72rem; font-weight: 600; color: #999;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  margin-bottom: 1.5rem; text-align: center;
+}
+.pipe-row {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0; flex-wrap: nowrap;
+}
+.pipe-node {
+  background: #fff; border: 1.5px solid #ddd;
+  padding: 0.75rem 1rem;
+  text-align: center; min-width: 110px;
+  transition: border-color 0.15s;
+}
+.pipe-node:hover { border-color: #999; }
+.pipe-node-label { font-size: 0.82rem; font-weight: 600; color: #1a1a1a; }
+.pipe-node-sub { font-size: 0.7rem; color: #999; margin-top: 0.1rem; }
+.pipe-arrow { color: #ccc; font-size: 1.1rem; padding: 0 0.4rem; flex-shrink: 0; }
+
+/* scheduler fan-out */
+.pipe-fan {
+  display: flex; flex-direction: column; gap: 0.4rem;
+  padding: 0.5rem 0;
+}
+.pipe-sched {
+  font-size: 0.75rem; font-weight: 600;
+  padding: 0.3rem 0.7rem;
+  border-left: 3px solid;
+  background: #fff;
+}
+.pipe-sched.baseline  { border-color: var(--c-baseline); color: var(--c-baseline); background: var(--c-baseline-bg); }
+.pipe-sched.hyperband { border-color: var(--c-hyperband); color: var(--c-hyperband); background: var(--c-hyperband-bg); }
+.pipe-sched.asha      { border-color: var(--c-asha); color: var(--c-asha); background: var(--c-asha-bg); }
+.pipe-sched.ga        { border-color: var(--c-ga); color: var(--c-ga); background: var(--c-ga-bg); }
+
+/* ── Scheduler visual comparison (2x2 grid) ───────────── */
+.sched-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+.sched-vis {
+  border: 1px solid #eee;
+  padding: 1.25rem;
+}
+.sched-vis-name {
+  font-size: 0.82rem; font-weight: 700;
+  margin-bottom: 0.6rem;
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.sched-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.sched-vis-desc {
+  font-size: 0.8rem; color: #666; margin-bottom: 0.85rem; line-height: 1.55;
+}
+/* candidate stage bars */
+.stage-bars { display: flex; flex-direction: column; gap: 0.35rem; }
+.stage-row {
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.stage-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem; color: #999; width: 55px; flex-shrink: 0;
+  text-align: right;
+}
+.stage-track {
+  flex: 1; height: 14px; background: #f5f5f5;
+  border: 1px solid #eee; position: relative;
+  display: flex; gap: 2px; padding: 2px;
+}
+.stage-block {
+  height: 100%; flex-shrink: 0;
+  border-radius: 1px;
+}
+.stage-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem; color: #999; width: 50px; flex-shrink: 0;
+}
+/* colors */
+.stage-block.alive { opacity: 1; }
+.stage-block.dead { opacity: 0.2; }
+
+/* ── Figure ────────────────────────────────────────────── */
+.figure { margin: 1.5rem 0; }
+.figure-wide { margin: 2rem -1rem; } /* bleeds slightly for emphasis */
+.fig-cap {
+  font-size: 0.82rem; color: #888; margin-top: 0.6rem; line-height: 1.5;
+  max-width: 720px;
+}
+.fig-cap b { color: #555; font-weight: 600; }
+
+/* ── Filter/sort controls ─────────────────────────────── */
+.controls { display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+.fbtn {
+  background: none; border: 1px solid #ddd;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.75rem; font-weight: 500; color: #999;
+  padding: 0.2rem 0.55rem; cursor: pointer; transition: all 0.12s;
+}
+.fbtn:hover { color: #555; border-color: #bbb; }
+.fbtn.active { color: #1a1a1a; border-color: #999; background: #f5f5f5; }
+.controls .hint { margin-left: auto; font-size: 0.7rem; color: #ccc; font-family: 'JetBrains Mono', monospace; }
+
+/* ── Results table ────────────────────────────────────── */
+.rtable { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.rtable thead th {
+  text-align: left; font-size: 0.7rem; font-weight: 600; color: #999;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 0.45rem 0.5rem; border-bottom: 2px solid #ddd;
+  cursor: pointer; user-select: none; white-space: nowrap;
+}
+.rtable thead th:hover { color: #555; }
+.rtable thead th.sorted { color: #1a1a1a; }
+.sort-icon { font-size: 0.6rem; margin-left: 0.15rem; opacity: 0.4; }
+.sort-icon.asc::after { content: '↑'; }
+.sort-icon.desc::after { content: '↓'; }
+.sort-icon.none::after { content: '↕'; }
+.rtable tbody tr { border-bottom: 1px solid #eee; }
+.rtable tbody tr:hover { background: #fafafa; }
+.rtable tbody td { padding: 0.5rem; color: #444; }
+.rtable tbody td:first-child { font-weight: 500; color: #1a1a1a; }
+.rtable .mono { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+.badge-done { color: #16a34a; font-size: 0.75rem; font-weight: 600; }
+.badge-pending { color: #999; font-size: 0.75rem; font-style: italic; }
+.eff-bar-wrap { display: flex; align-items: center; gap: 0.3rem; }
+.eff-bar { flex: 1; height: 3px; background: #eee; min-width: 25px; }
+.eff-bar-fill { height: 100%; background: #1a1a1a; }
+.hidden { display: none !important; }
+
+/* scheduler badge colors in table */
+.sched-badge {
+  font-size: 0.75rem; font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-left: 3px solid;
+}
+.sched-badge.baseline  { border-color: var(--c-baseline); color: var(--c-baseline); }
+.sched-badge.hyperband { border-color: var(--c-hyperband); color: var(--c-hyperband); }
+.sched-badge.asha      { border-color: var(--c-asha); color: var(--c-asha); }
+.sched-badge.ga        { border-color: var(--c-ga); color: var(--c-ga); }
+
+/* ── Horizontal timeline ──────────────────────────────── */
+.h-timeline {
+  display: flex;
+  position: relative;
+  margin: 2rem 0 1rem;
+  padding-top: 1.5rem;
+}
+.h-timeline::before {
+  content: '';
+  position: absolute;
+  top: 1.5rem; left: 0; right: 0;
+  height: 2px; background: #e5e5e5;
+  transform: translateY(3px);
+}
+.h-tl-item {
+  flex: 1;
+  position: relative;
+  padding-right: 0.5rem;
+}
+.h-tl-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  position: absolute; top: 0;
+  left: 0;
+  z-index: 1;
+}
+.h-tl-dot.done { background: #1a1a1a; }
+.h-tl-dot.active { background: #2563eb; }
+.h-tl-dot.planned { background: #fff; border: 2px solid #ddd; }
+.h-tl-date {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem; color: #999;
+  margin-top: 1rem;
+}
+.h-tl-title { font-size: 0.82rem; font-weight: 600; margin-top: 0.15rem; line-height: 1.3; }
+.h-tl-desc { font-size: 0.75rem; color: #888; margin-top: 0.15rem; line-height: 1.45; }
+.h-tl-status { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.2rem; }
+.s-done { color: #16a34a; }
+.s-active { color: #2563eb; }
+.s-planned { color: #bbb; }
+
+/* ── Evolution items ──────────────────────────────────── */
+.evo-item { margin-bottom: 1.25rem; padding-bottom: 1.25rem; border-bottom: 1px solid #eee; }
+.evo-item:last-child { border-bottom: none; padding-bottom: 0; }
+.evo-label { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #999; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.15rem; }
+.evo-title { font-family: 'Crimson Pro', Georgia, serif; font-size: 1.05rem; font-weight: 700; margin-bottom: 0.3rem; }
+.evo-text { font-size: 0.9rem; color: #555; margin-bottom: 0.4rem; }
+.evo-metrics { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.evo-tag { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #888; border: 1px solid #e5e5e5; padding: 0.1rem 0.4rem; }
+.evo-tag.good { color: #16a34a; border-color: #bbdfcc; }
+.evo-tag.improve { color: #2563eb; border-color: #bfdbfe; }
+
+/* ── References ───────────────────────────────────────── */
+.ref { font-size: 0.88rem; color: #555; margin-bottom: 0.6rem; line-height: 1.6; }
+.ref b { color: #1a1a1a; }
+
+/* ── BibTeX ───────────────────────────────────────────── */
+.bib {
+  background: #f9f9f9; border: 1px solid #eee;
+  padding: 0.85rem 1rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem; color: #666; line-height: 1.8; overflow-x: auto;
+}
+.bk { color: #2563eb; } .bf { color: #7c3aed; } .bv { color: #16a34a; }
+
+/* ── Footer ───────────────────────────────────────────── */
+footer {
+  border-top: 1px solid #e5e5e5; margin-top: 2.5rem;
+  padding: 1.25rem 0 3rem; font-size: 0.82rem; color: #bbb;
+  display: flex; justify-content: space-between;
+}
+footer a { color: #999; text-decoration: none; margin-left: 0.75rem; }
+footer a:hover { color: #2563eb; }
 </style>
 </head>
 <body>
 
-<div id="progress-bar"></div>
-
-<!-- NAV -->
 <nav>
-  <a href="#hero" class="nav-logo">DG<span>M</span></a>
-  <ul class="nav-links">
-    <li><a href="#abstract">Abstract</a></li>
-    <li><a href="#method">Method</a></li>
-    <li><a href="#benchmarks">Benchmarks</a></li>
-    <li><a href="#results">Results</a></li>
-    <li><a href="#evolution">Evolution</a></li>
-    <li><a href="#conclusion">Conclusion</a></li>
-  </ul>
+  <div class="inner" style="max-width:1060px;margin:0 auto;padding:0.5rem 2rem;display:flex;align-items:center;gap:0.1rem;overflow-x:auto;">
+    <a href="#problem">Problem</a>
+    <a href="#approach">Approach</a>
+    <a href="#schedulers">Schedulers</a>
+    <a href="#results">Results</a>
+    <a href="#evolution">Evolution</a>
+    <a href="#timeline">Timeline</a>
+    <a href="#refs">References</a>
+    <span class="nav-spacer"></span>
+    <a class="ext" href="#">Paper</a>
+    <a class="ext" href="#">GitHub</a>
+  </div>
 </nav>
 
-<!-- HERO -->
-<div id="hero">
-  <canvas id="hero-canvas"></canvas>
-  <div class="hero-content">
-    <div class="hero-badge">Bachelor Thesis &nbsp;·&nbsp; 2026 &nbsp;·&nbsp; Extending DGM</div>
-    <h1 class="hero-title">Darwin Gödel<br>Machine</h1>
-    <p class="hero-subtitle">Open-Ended Self-Improving Agents via Empirical Validation</p>
-    <p class="hero-authors">Extending Zhang, Hu, Lu, Lange &amp; Clune (2025) &nbsp;·&nbsp; arXiv:2505.22954</p>
+<div class="col">
 
-    <div class="hero-stats">
-      <div class="stat-card">
-        <span class="stat-value" data-count="50">0</span>
-        <span class="stat-label">SWE-bench Tasks</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-value" data-count="20" data-suffix="%">0%</span>
-        <span class="stat-label">Baseline Accuracy</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-value" data-count="50" data-suffix="%">0%</span>
-        <span class="stat-label">Gen 0 Accuracy</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-value" data-count="2.5" data-suffix="×" data-float>0×</span>
-        <span class="stat-label">Improvement</span>
+<!-- ════ Header ═══════════════════════════════════════ -->
+<header>
+  <div class="header-inner">
+    <h1>Can We Make AI Self-Improvement Cheap?</h1>
+    <p class="subtitle">Four evaluation schedulers. One self-improving agent. A $90 budget.<br>Which approach finds smarter agents for less money?</p>
+    <p class="meta">
+      <strong>Leonardo Giuseppe Gianola</strong> · University of Southern Denmark · 2026<br>
+      Supervised by [Supervisor] · Extending <a href="https://arxiv.org/abs/2505.22954">Zhang et al. (2025)</a>
+    </p>
+    <div class="actions">
+      <a class="btn btn-accent" href="#results">Read the Story ↓</a>
+      <a class="btn" href="#">Read the Paper (PDF) →</a>
+      <a class="btn" href="#">GitHub →</a>
+    </div>
+  </div>
+</header>
+
+<!-- ════ Hero DGM Loop Diagram ════════════════════════ -->
+<div class="hero-diagram">
+  <div class="hero-diagram-title">The Darwin Gödel Machine — Self-Improvement Loop</div>
+  <div class="loop-flow">
+    <div class="loop-node">
+      <div class="loop-icon">🗄️</div>
+      <div class="loop-label">Archive</div>
+      <div class="loop-sub">Elite agents</div>
+    </div>
+    <div class="loop-arrow">→</div>
+    <div class="loop-node">
+      <div class="loop-icon">🎯</div>
+      <div class="loop-label">Select Parent</div>
+      <div class="loop-sub">Best / tournament</div>
+    </div>
+    <div class="loop-arrow">→</div>
+    <div class="loop-node">
+      <div class="loop-icon">🧬</div>
+      <div class="loop-label">Mutate</div>
+      <div class="loop-sub">Meta-LLM rewrites code</div>
+    </div>
+    <div class="loop-arrow">→</div>
+    <div class="loop-node">
+      <div class="loop-icon" style="border-color:#2563eb;">📊</div>
+      <div class="loop-label">Evaluate</div>
+      <div class="loop-sub">Scheduler decides cost</div>
+    </div>
+    <div class="loop-arrow">→</div>
+    <div class="loop-node">
+      <div class="loop-icon">✅</div>
+      <div class="loop-label">Keep or Kill</div>
+      <div class="loop-sub">Improved? → archive</div>
+    </div>
+  </div>
+  <div class="loop-return">↻ repeat each generation — the agent rewrites itself, tests the result, keeps what works</div>
+</div>
+
+<!-- ════ The Problem ══════════════════════════════════ -->
+<section id="problem">
+<div class="col-narrow" style="padding:0;">
+  <h2>The Problem</h2>
+  <p>The <strong>Darwin Gödel Machine</strong> (DGM) is an AI agent that rewrites its own source code to get better at solving real software engineering tasks. Each generation, it mutates its code, tests the mutation on actual GitHub issues, and keeps the change only if it helps.</p>
+  <p>It works. But it's expensive. Every mutation needs to be tested on real tasks inside Docker containers, costing time and money. The question this thesis asks:</p>
+  <p style="font-size:1.15rem;"><strong>Can we find equally good agents while spending significantly less?</strong></p>
+</div>
+</section>
+
+<div class="break">* * *</div>
+
+<!-- ════ The Approach ═════════════════════════════════ -->
+<section id="approach">
+<div class="col-narrow" style="padding:0;">
+  <h2>The Approach</h2>
+  <p>We compare <strong>four evaluation schedulers</strong> — different strategies for deciding how thoroughly to test each mutated agent. The core idea: don't waste expensive full evaluations on bad agents. Kill them early, spend the budget on promising ones.</p>
+</div>
+
+<div class="callout" style="max-width:720px;">
+  <span class="formula">Efficiency = resolved% / cost($)</span>
+  <p>The core metric. A scheduler that finds a 50%-accurate agent for <span class="big-num">$1</span> is five times more efficient than one that needs <span class="big-num">$5</span>. This thesis argues <strong>efficiency — not raw accuracy — is what matters</strong> for practical self-improvement research.</p>
+</div>
+
+<!-- Architecture pipeline diagram -->
+<div class="pipeline">
+  <div class="pipeline-title">System Architecture — Full Pipeline</div>
+  <div class="pipe-row">
+    <div class="pipe-node">
+      <div class="pipe-node-label">Parent Agent</div>
+      <div class="pipe-node-sub">From archive</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node">
+      <div class="pipe-node-label">Meta-LLM</div>
+      <div class="pipe-node-sub">Proposes mutations</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node">
+      <div class="pipe-node-label">Child Agent</div>
+      <div class="pipe-node-sub">Modified source</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div style="display:flex;flex-direction:column;align-items:center;">
+      <div style="font-size:0.68rem;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.4rem;">Scheduler</div>
+      <div class="pipe-fan">
+        <div class="pipe-sched baseline">Baseline</div>
+        <div class="pipe-sched hyperband">Hyperband</div>
+        <div class="pipe-sched asha">ASHA</div>
+        <div class="pipe-sched ga">GA</div>
       </div>
     </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node">
+      <div class="pipe-node-label">SWE-bench</div>
+      <div class="pipe-node-sub">Real GitHub issues</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node" style="border-color:#16a34a;">
+      <div class="pipe-node-label">Archive</div>
+      <div class="pipe-node-sub">Keep if improved</div>
+    </div>
+  </div>
+  <p style="text-align:center;font-size:0.78rem;color:#bbb;margin-top:1rem;font-style:italic;">Figure 3. System pipeline. The scheduler is the variable — everything else stays constant across experiments.</p>
+</div>
 
-    <a href="#abstract" class="hero-cta">Explore the Research ↓</a>
+<details>
+  <summary>More detail on the DGM loop</summary>
+  <div class="det-body">
+    <p><strong>Step 1 — Seed.</strong> Start with a hand-crafted coding agent (20% accuracy on SWE-bench Verified Mini).</p>
+    <p><strong>Step 2 — Select.</strong> Pick a parent agent from the archive of validated agents.</p>
+    <p><strong>Step 3 — Mutate.</strong> A meta-LLM analyzes the parent's failures and proposes code changes — targeting prompts, tools, or workflow logic. Invalid Python is discarded immediately.</p>
+    <p><strong>Step 4 — Evaluate.</strong> Test the mutant on real GitHub issues. The <em>scheduler</em> decides how many tasks to run and when to give up.</p>
+    <p><strong>Step 5 — Archive.</strong> If the mutant improves on its parent, keep it. Otherwise discard. Repeat.</p>
+  </div>
+</details>
+</section>
+
+<div class="break">* * *</div>
+
+<!-- ════ The Four Schedulers ══════════════════════════ -->
+<section id="schedulers">
+<h2>The Four Schedulers</h2>
+<p>Same agent. Same benchmark. Same LLM. The only difference is <strong>how they evaluate candidates</strong> — how many tasks, in what order, when to stop.</p>
+
+<div class="sched-grid">
+  <!-- Baseline -->
+  <div class="sched-vis">
+    <div class="sched-vis-name"><span class="sched-dot" style="background:var(--c-baseline)"></span> Baseline</div>
+    <div class="sched-vis-desc">3-stage elimination. Test all candidates through small → medium → full. Promote if score beats parent. No optimization.</div>
+    <div class="stage-bars">
+      <div class="stage-row">
+        <span class="stage-label">3 tasks</span>
+        <div class="stage-track">
+          <div class="stage-block alive" style="flex:1;background:var(--c-baseline);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-baseline);"></div>
+        </div>
+        <span class="stage-count">2 agents</span>
+      </div>
+      <div class="stage-row">
+        <span class="stage-label">12 tasks</span>
+        <div class="stage-track">
+          <div class="stage-block alive" style="flex:1;background:var(--c-baseline);"></div>
+          <div class="stage-block dead" style="flex:1;background:var(--c-baseline);"></div>
+        </div>
+        <span class="stage-count">1 survives</span>
+      </div>
+      <div class="stage-row">
+        <span class="stage-label">35 tasks</span>
+        <div class="stage-track">
+          <div class="stage-block alive" style="flex:1;background:var(--c-baseline);"></div>
+        </div>
+        <span class="stage-count">1 survives</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hyperband -->
+  <div class="sched-vis">
+    <div class="sched-vis-name"><span class="sched-dot" style="background:var(--c-hyperband)"></span> Hyperband</div>
+    <div class="sched-vis-desc">Structured rung budgets (2→10→50 tasks). Start with many candidates, aggressively eliminate. Synchronous — wait for all to finish each rung.</div>
+    <div class="stage-bars">
+      <div class="stage-row">
+        <span class="stage-label">2 tasks</span>
+        <div class="stage-track">
+          <div class="stage-block alive" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-hyperband);"></div>
+        </div>
+        <span class="stage-count">10 agents</span>
+      </div>
+      <div class="stage-row">
+        <span class="stage-label">10 tasks</span>
+        <div class="stage-track">
+          <div class="stage-block alive" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block dead" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block dead" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block dead" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block dead" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block dead" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block dead" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block dead" style="flex:1;background:var(--c-hyperband);"></div>
+          <div class="stage-block dead" style="flex:1;background:var(--c-hyperband);"></div>
+        </div>
+        <span class="stage-count">2 survive</span>
+      </div>
+      <div class="stage-row">
+        <span class="stage-label">50 tasks</span>
+        <div class="stage-track">
+          <div class="stage-block alive" style="flex:1;background:var(--c-hyperband);"></div>
+        </div>
+        <span class="stage-count">1 survives</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ASHA -->
+  <div class="sched-vis">
+    <div class="sched-vis-name"><span class="sched-dot" style="background:var(--c-asha)"></span> ASHA</div>
+    <div class="sched-vis-desc">Async Successive Halving. Promotes top-K as soon as they finish — no waiting. Maximize throughput, minimize idle time.</div>
+    <div class="stage-bars">
+      <div class="stage-row">
+        <span class="stage-label">3 tasks</span>
+        <div class="stage-track">
+          <div class="stage-block alive" style="flex:1;background:var(--c-asha);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-asha);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-asha);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-asha);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-asha);"></div>
+        </div>
+        <span class="stage-count">5 agents</span>
+      </div>
+      <div class="stage-row">
+        <span class="stage-label">12 tasks</span>
+        <div class="stage-track">
+          <div class="stage-block alive" style="flex:1;background:var(--c-asha);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-asha);"></div>
+          <div class="stage-block dead" style="flex:1;background:var(--c-asha);"></div>
+          <div class="stage-block dead" style="flex:1;background:var(--c-asha);"></div>
+          <div class="stage-block dead" style="flex:1;background:var(--c-asha);"></div>
+        </div>
+        <span class="stage-count">2 promoted</span>
+      </div>
+      <div class="stage-row">
+        <span class="stage-label">35 tasks</span>
+        <div class="stage-track">
+          <div class="stage-block alive" style="flex:1;background:var(--c-asha);"></div>
+        </div>
+        <span class="stage-count">1 survives</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- GA -->
+  <div class="sched-vis">
+    <div class="sched-vis-name"><span class="sched-dot" style="background:var(--c-ga)"></span> Genetic Algorithm</div>
+    <div class="sched-vis-desc">Same 3-stage evaluation as baseline but mutations are blind (no error context). Tests whether diversity beats precision.</div>
+    <div class="stage-bars">
+      <div class="stage-row">
+        <span class="stage-label">3 tasks</span>
+        <div class="stage-track">
+          <div class="stage-block alive" style="flex:1;background:var(--c-ga);"></div>
+          <div class="stage-block alive" style="flex:1;background:var(--c-ga);"></div>
+        </div>
+        <span class="stage-count">2 agents</span>
+      </div>
+      <div class="stage-row">
+        <span class="stage-label">12 tasks</span>
+        <div class="stage-track">
+          <div class="stage-block alive" style="flex:1;background:var(--c-ga);"></div>
+          <div class="stage-block dead" style="flex:1;background:var(--c-ga);"></div>
+        </div>
+        <span class="stage-count">1 survives</span>
+      </div>
+      <div class="stage-row">
+        <span class="stage-label">35 tasks</span>
+        <div class="stage-track">
+          <div class="stage-block alive" style="flex:1;background:var(--c-ga);"></div>
+        </div>
+        <span class="stage-count">1 survives</span>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- ABSTRACT -->
-<section id="abstract" style="max-width:1100px; padding: 6rem 2rem;">
-  <div class="section-tag">&lt; 01 &gt; Abstract</div>
-  <h2 class="section-title">A Machine That <span class="accent">Rewrites Itself</span></h2>
-  <div class="divider"></div>
-
-  <div class="abstract-grid reveal">
-    <div class="abstract-text">
-      <p>The <span class="highlight">Darwin Gödel Machine</span> (DGM) is a self-improving coding agent that iteratively modifies its own source code and empirically validates each change on real-world software engineering benchmarks.</p>
-      <br>
-      <p>Unlike prior approaches that rely on hand-crafted improvements, DGM leverages <span class="highlight">large language models</span> to propose targeted mutations to its own implementation — targeting reasoning prompts, tool usage, and patch application logic. Each modification is tested on a subset of real GitHub issues from <span class="highlight">SWE-bench Verified Mini</span>, and improvements are retained only when they demonstrably increase resolution rate.</p>
-      <br>
-      <p>This thesis extends the original DGM framework with novel <span class="highlight">multi-fidelity schedulers</span> (ASHA and Hyperband) that reduce evaluation cost while maintaining competitive performance, enabling faster exploration of the self-improvement search space.</p>
-    </div>
-
-    <div class="key-terms">
-      <div class="term-chip">
-        <span class="icon">⚙️</span>
-        <div>
-          <strong>Self-Improvement</strong>
-          <p>The agent modifies its own Python source code — prompts, tools, and reasoning chains — to improve future task performance.</p>
-        </div>
-      </div>
-      <div class="term-chip">
-        <span class="icon">🧬</span>
-        <div>
-          <strong>Evolutionary Selection</strong>
-          <p>Only code changes that improve benchmark accuracy are kept. Failed mutations are discarded, preserving a growing archive of elite agents.</p>
-        </div>
-      </div>
-      <div class="term-chip">
-        <span class="icon">📊</span>
-        <div>
-          <strong>Empirical Validation</strong>
-          <p>Every proposed change is tested on real GitHub issues (Django, Sphinx, etc.) — not simulated environments.</p>
-        </div>
-      </div>
-      <div class="term-chip">
-        <span class="icon">⚡</span>
-        <div>
-          <strong>Multi-Fidelity Scheduling</strong>
-          <p>ASHA and Hyperband rungs evaluate promising agents on progressively larger task subsets, cutting compute waste by up to 70%.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<div class="section-separator"></div>
-
-<!-- METHOD -->
-<section id="method" style="max-width:1100px; padding: 6rem 2rem;">
-  <div class="section-tag">&lt; 02 &gt; Method</div>
-  <h2 class="section-title">The <span class="accent">DGM Loop</span></h2>
-  <div class="divider"></div>
-
-  <!-- Interactive walkthrough -->
-  <div class="walkthrough reveal">
-    <div class="walkthrough-steps" id="step-tabs">
-      <button class="step-btn active" onclick="showStep(0)">01 · Init</button>
-      <button class="step-btn" onclick="showStep(1)">02 · Select</button>
-      <button class="step-btn" onclick="showStep(2)">03 · Mutate</button>
-      <button class="step-btn" onclick="showStep(3)">04 · Evaluate</button>
-      <button class="step-btn" onclick="showStep(4)">05 · Archive</button>
-    </div>
-
-    <!-- Step 0 -->
-    <div class="step-content active" id="step-0">
-      <div class="step-header">
-        <div class="step-number">01</div>
-        <div class="step-title">Initialization — Seed the Archive</div>
-      </div>
-      <p class="step-desc">The process begins with a hand-crafted baseline coding agent and a benchmark dataset. The initial agent attempts all tasks, establishing the starting accuracy score that all future generations must beat.</p>
-      <div class="step-detail">
-        <strong style="color:var(--cyan)">Initial Baseline:</strong> The seed agent achieves <strong>20% accuracy</strong> on SWE-bench Verified Mini (12 out of 60 tasks resolved). It uses GPT-based reasoning with bash and file-editing tools. This single agent forms the root of the evolutionary archive.
-      </div>
-    </div>
-
-    <!-- Step 1 -->
-    <div class="step-content" id="step-1">
-      <div class="step-header">
-        <div class="step-number">02</div>
-        <div class="step-title">Parent Selection — Choose a Candidate</div>
-      </div>
-      <p class="step-desc">From the archive of validated agents, a parent is chosen to serve as the base for the next mutation. Multiple selection strategies are available, balancing exploration vs. exploitation.</p>
-      <div class="step-detail">
-        <strong style="color:var(--cyan)">Selection Strategies:</strong><br>
-        • <strong>Random</strong> — uniform sampling from archive<br>
-        • <strong>Score-Proportional</strong> — high-accuracy parents preferred via sigmoid weighting<br>
-        • <strong>Tournament</strong> — k random candidates, best wins (k=3 default)<br>
-        • <strong>Best</strong> — always pick the current top performer<br>
-        • <strong>No-Darwin</strong> — always the latest commit (control baseline, no evolution)
-      </div>
-    </div>
-
-    <!-- Step 2 -->
-    <div class="step-content" id="step-2">
-      <div class="step-header">
-        <div class="step-number">03</div>
-        <div class="step-title">Self-Modification — LLM Rewrites the Agent</div>
-      </div>
-      <p class="step-desc">An LLM (GPT-4 / Claude) analyzes the parent agent's failures and proposes targeted code changes. The mutation targets specific components: reasoning prompts, tool implementations, or the workflow logic.</p>
-      <div class="step-detail">
-        <strong style="color:var(--cyan)">Mutation Process:</strong><br>
-        1. Diagnosis — analyze which tasks failed and why (error logs, patch mismatches)<br>
-        2. Proposal — LLM suggests specific code changes with rationale in JSON format<br>
-        3. Application — changes are applied to a fork of the parent agent's source<br>
-        4. Compilation check — invalid Python is immediately discarded before evaluation<br><br>
-        <em style="color:var(--muted)">Targets include: system prompts, AST-aware editing logic, test-verify loops, context management</em>
-      </div>
-    </div>
-
-    <!-- Step 3 -->
-    <div class="step-content" id="step-3">
-      <div class="step-header">
-        <div class="step-number">04</div>
-        <div class="step-title">Evaluation — Test on Real Benchmarks</div>
-      </div>
-      <p class="step-desc">The mutated agent is deployed against a subset of real GitHub issues. It must find and apply the correct patch to make previously-failing tests pass. Accuracy score drives the selection decision.</p>
-      <div class="step-detail">
-        <strong style="color:var(--cyan)">Evaluation Metrics:</strong><br>
-        • <strong>accuracy_score</strong> = resolved_tasks / total_submitted_tasks<br>
-        • <strong>total_resolved_ids</strong> — list of successfully patched issues<br>
-        • <strong>empty_patch_ids</strong> — agent gave up (generated no change)<br>
-        • <strong>token_usage_total</strong> — compute cost tracking<br><br>
-        Multi-fidelity schedulers (ASHA, Hyperband) evaluate on progressively larger subsets — stage_small → stage_medium → full — killing weak agents early.
-      </div>
-    </div>
-
-    <!-- Step 4 -->
-    <div class="step-content" id="step-4">
-      <div class="step-header">
-        <div class="step-number">05</div>
-        <div class="step-title">Archive Update — Keep the Best</div>
-      </div>
-      <p class="step-desc">If the mutated child achieves a higher accuracy than its parent (or passes the multi-fidelity promotion threshold), it is added to the archive. Poor performers are discarded. The archive grows with elite agents only.</p>
-      <div class="step-detail">
-        <strong style="color:var(--cyan)">Archive Management:</strong><br>
-        • Agents stored as full Python source snapshots<br>
-        • Each entry tagged with: accuracy_score, generation, parent_id, token_cost<br>
-        • Archive enables branching evolution — future generations can descend from any elite<br>
-        • Tie-breaking by token efficiency (fewer tokens = preferred when scores equal)<br><br>
-        The loop then repeats from Step 2 — selecting a new parent from the updated archive.
-      </div>
-    </div>
-
-    <div class="step-nav">
-      <button class="nav-btn" id="prev-btn" onclick="changeStep(-1)" disabled>← Previous</button>
-      <span style="font-size:0.8rem; color:var(--muted); align-self:center; font-family:'JetBrains Mono',monospace;" id="step-counter">Step 1 of 5</span>
-      <button class="nav-btn" id="next-btn" onclick="changeStep(1)">Next →</button>
-    </div>
-  </div>
-
-  <!-- Schedulers -->
-  <div class="reveal" style="margin-top: 1rem;">
-    <h3 style="font-family:'Orbitron',sans-serif; font-size:0.9rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:1rem;">Evolution Schedulers</h3>
-    <div class="schedulers-grid">
-      <div class="scheduler-card baseline">
-        <div class="scheduler-name">Baseline</div>
-        <div class="scheduler-desc">Single agent, no evolution. Evaluates the initial agent across all tasks without self-improvement. Used as a control condition.</div>
-      </div>
-      <div class="scheduler-card ga">
-        <div class="scheduler-name">Genetic Algorithm</div>
-        <div class="scheduler-desc">Standard evolutionary loop. Each generation produces one child via mutation. Configurable parent selection strategy (random, tournament, best, score-proportional).</div>
-      </div>
-      <div class="scheduler-card asha">
-        <div class="scheduler-name">ASHA</div>
-        <div class="scheduler-desc">Asynchronous Successive Halving. Evaluates children on small task subsets first, promoting only top performers to larger, more expensive evaluations.</div>
-      </div>
-      <div class="scheduler-card hyperband">
-        <div class="scheduler-name">Hyperband</div>
-        <div class="scheduler-desc">Extends ASHA with structured rung budgets (rung0 → rung1 → rung2). Maximizes compute efficiency across multiple fidelity levels simultaneously.</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<div class="section-separator"></div>
-
-<!-- ARCHITECTURE -->
-<section id="architecture" style="max-width:1100px; padding: 6rem 2rem;">
-  <div class="section-tag">&lt; 03 &gt; Architecture</div>
-  <h2 class="section-title"><span class="accent">Two-Level</span> Improvement Loop</h2>
-  <div class="divider"></div>
-
-  <div class="dual-level reveal">
-    <div class="level-card level1">
-      <div class="level-title">Level 1 — Object Level</div>
-      <p class="level-desc">The coding agent solves real GitHub issues. Given a problem description and failing tests, it reasons, explores the codebase, writes patches, and validates fixes. This is the "work" the agent is evaluated on.</p>
-    </div>
-    <div class="level-card level2">
-      <div class="level-title">Level 2 — Meta Level</div>
-      <p class="level-desc">DGM uses a separate LLM to analyze the coding agent's failures and propose improvements to the agent's own Python source code — its prompts, tools, and reasoning workflow. This is the "self-improvement" layer.</p>
-    </div>
-  </div>
-
-  <!-- Arch diagram -->
-  <div class="arch-diagram reveal">
-    <div class="arch-node card-corner" id="arch-problem">
-      <span class="node-icon">📋</span>
-      <div class="node-label">GitHub Issues</div>
-      <div class="node-desc">Real bugs from Django, Sphinx & friends</div>
-    </div>
-    <div class="arch-arrow animated">→</div>
-    <div class="arch-node card-corner" id="arch-agent">
-      <span class="node-icon">🤖</span>
-      <div class="node-label">Coding Agent</div>
-      <div class="node-desc">LLM with bash + file tools</div>
-    </div>
-    <div class="arch-arrow animated">→</div>
-    <div class="arch-node card-corner" id="arch-eval">
-      <span class="node-icon">✅</span>
-      <div class="node-label">Evaluation</div>
-      <div class="node-desc">Run test suite, measure accuracy</div>
-    </div>
-    <div class="arch-arrow animated">→</div>
-    <div class="arch-node card-corner" id="arch-meta">
-      <span class="node-icon">🧬</span>
-      <div class="node-label">Meta-LLM</div>
-      <div class="node-desc">Diagnoses failures, proposes mutations</div>
-    </div>
-    <div class="arch-arrow" style="transform: rotate(0deg); writing-mode:horizontal-tb;">↩</div>
-  </div>
-  <p style="text-align:center; font-size:0.78rem; color:var(--muted); margin-top:0.5rem; font-family:'JetBrains Mono',monospace;">The meta-LLM feeds improvements back into the Coding Agent, closing the self-improvement loop</p>
-</section>
-
-<div class="section-separator"></div>
-
-<!-- BENCHMARKS -->
-<section id="benchmarks" style="max-width:1100px; padding: 6rem 2rem;">
-  <div class="section-tag">&lt; 04 &gt; Benchmarks</div>
-  <h2 class="section-title">Evaluation <span class="accent">Infrastructure</span></h2>
-  <div class="divider"></div>
-
-  <div class="benchmark-grid reveal">
-    <div class="benchmark-card swe">
-      <div class="benchmark-name">SWE-bench Verified Mini</div>
-      <div class="benchmark-meta">MariusHobbhahn/swe-bench-verified-mini · 50 tasks</div>
-      <div class="benchmark-stat"><span>Total Tasks</span><span>50</span></div>
-      <div class="benchmark-stat"><span>Source</span><span>Real GitHub Issues</span></div>
-      <div class="benchmark-stat"><span>Projects</span><span>Django, Sphinx, SymPy…</span></div>
-      <div class="benchmark-stat"><span>Validation</span><span>FAIL_TO_PASS tests</span></div>
-      <div class="benchmark-stat"><span>Initial Solved</span><span>12 / 60</span></div>
-      <div class="benchmark-stat"><span>Subsets</span><span>small → medium → full</span></div>
-    </div>
-
-    <div class="benchmark-card poly">
-      <div class="benchmark-name">Polyglot Benchmark</div>
-      <div class="benchmark-meta">Multi-language programming tasks · 225 problems</div>
-      <div class="benchmark-stat"><span>Total Tasks</span><span>225</span></div>
-      <div class="benchmark-stat"><span>Languages</span><span>6</span></div>
-      <div class="benchmark-stat"><span>Initial Solved</span><span>32 / 225</span></div>
-      <div class="benchmark-stat"><span>Baseline Accuracy</span><span>14.2%</span></div>
-
-      <div class="lang-bars" id="lang-bars">
-        <div class="lang-bar-row">
-          <span class="lang-name">Go</span>
-          <div class="lang-track"><div class="lang-fill" style="background:var(--cyan);" data-width="100"></div></div>
-          <span class="lang-count">15</span>
-        </div>
-        <div class="lang-bar-row">
-          <span class="lang-name">Rust</span>
-          <div class="lang-track"><div class="lang-fill" style="background:var(--purple);" data-width="53"></div></div>
-          <span class="lang-count">8</span>
-        </div>
-        <div class="lang-bar-row">
-          <span class="lang-name">JavaScript</span>
-          <div class="lang-track"><div class="lang-fill" style="background:var(--green);" data-width="33"></div></div>
-          <span class="lang-count">5</span>
-        </div>
-        <div class="lang-bar-row">
-          <span class="lang-name">Python</span>
-          <div class="lang-track"><div class="lang-fill" style="background:#ffaa00;" data-width="20"></div></div>
-          <span class="lang-count">3</span>
-        </div>
-        <div class="lang-bar-row">
-          <span class="lang-name">C++</span>
-          <div class="lang-track"><div class="lang-fill" style="background:#ff6644;" data-width="7"></div></div>
-          <span class="lang-count">1</span>
-        </div>
-        <div class="lang-bar-row">
-          <span class="lang-name">Java</span>
-          <div class="lang-track"><div class="lang-fill" style="background:var(--muted);" data-width="0"></div></div>
-          <span class="lang-count">0</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Example task accordion -->
-  <div class="reveal">
-    <h3 style="font-family:'Orbitron',sans-serif; font-size:0.85rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:1rem;">Example Task</h3>
-    <div class="card" style="cursor:pointer;" onclick="toggleAccordion(this)">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div>
-          <div style="font-family:'JetBrains Mono',monospace; font-size:0.8rem; color:var(--cyan); margin-bottom:0.2rem;">django__django-11815</div>
-          <div style="font-size:0.88rem; color:var(--text);">Migrations auto-detector misses nested class model changes</div>
-        </div>
-        <span style="color:var(--cyan); font-size:1.2rem; transition:transform 0.3s;" class="acc-icon">▸</span>
-      </div>
-      <div class="acc-body" style="display:none; margin-top:1rem;">
-        <div style="background:var(--surface2); border-left:3px solid var(--cyan); padding:1rem; border-radius:0 8px 8px 0; font-size:0.83rem; color:var(--muted); line-height:1.7;">
-          <strong style="color:var(--text)">Problem:</strong> Django's migration auto-detector fails to detect model changes when models are defined as inner classes. The auto-detector traverses the model graph but does not recurse into nested class definitions, causing migrations to be silently skipped.
-          <br><br>
-          <strong style="color:var(--text)">Why it's hard:</strong> Requires understanding Django's metaclass internals, the migration state machine, and the exact traversal order of the auto-detector's model registry. The agent must both locate the bug and write a semantically correct AST patch without breaking other migration paths.
-          <br><br>
-          <strong style="color:var(--text)">Validation:</strong> <code style="color:var(--cyan)">FAIL_TO_PASS: tests.migrations.test_autodetector.AutodetectorTests.test_nested_model_changes</code>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<div class="section-separator"></div>
-
-<!-- RESULTS -->
-<section id="results" style="max-width:1100px; padding: 6rem 2rem;">
-  <div class="section-tag">&lt; 05 &gt; Results</div>
-  <h2 class="section-title"><span class="accent">Performance</span> Across Generations</h2>
-  <div class="divider"></div>
-
-  <div class="results-metrics reveal">
-    <div class="metric-card">
-      <span class="metric-value" data-count="20" data-suffix="%">—</span>
-      <span class="metric-label">Baseline Accuracy</span>
-    </div>
-    <div class="metric-card">
-      <span class="metric-value green" data-count="50" data-suffix="%">—</span>
-      <span class="metric-label">Gen 0 Accuracy (10-task subset)</span>
-    </div>
-    <div class="metric-card">
-      <span class="metric-value purple" data-count="30" data-suffix=" pp">—</span>
-      <span class="metric-label">Absolute Improvement</span>
-    </div>
-  </div>
-
-  <!-- Performance chart -->
-  <div class="chart-container reveal">
-    <div class="chart-title">Accuracy Over Generations — SWE-bench Verified Mini</div>
-    <canvas id="performanceChart" height="300"></canvas>
-  </div>
-
-  <!-- Bar chart: benchmark comparison -->
-  <div class="chart-container reveal" style="margin-top:1.5rem;">
-    <div class="chart-title">Baseline Comparison Across Benchmarks</div>
-    <canvas id="benchmarkChart" height="220"></canvas>
-  </div>
-
-  <!-- Results table -->
-  <div class="reveal">
-    <table class="results-table">
-      <thead>
-        <tr>
-          <th>Agent</th>
-          <th>Scheduler</th>
-          <th>Benchmark</th>
-          <th>Tasks Evaluated</th>
-          <th>Resolved</th>
-          <th>Accuracy</th>
-          <th>Δ vs Baseline</th>
-        </tr>
-      </thead>
+<details>
+  <summary>More detail on staged evaluation</summary>
+  <div class="det-body">
+    <table class="simple">
+      <thead><tr><th>Stage</th><th>Tasks</th><th>Threshold</th><th>Purpose</th><th>Est. Cost</th></tr></thead>
       <tbody>
-        <tr>
-          <td>Initial Agent</td>
-          <td>—</td>
-          <td>SWE-Mini</td>
-          <td>60</td>
-          <td>12</td>
-          <td>20.0%</td>
-          <td class="delta-neutral">—</td>
-        </tr>
-        <tr>
-          <td>Gen 0 Child</td>
-          <td>GA</td>
-          <td>SWE-Mini (subset)</td>
-          <td>10</td>
-          <td>5</td>
-          <td>50.0%</td>
-          <td class="delta-positive">+30 pp</td>
-        </tr>
-        <tr>
-          <td>Initial Agent</td>
-          <td>—</td>
-          <td>Polyglot</td>
-          <td>225</td>
-          <td>32</td>
-          <td>14.2%</td>
-          <td class="delta-neutral">—</td>
-        </tr>
-        <tr>
-          <td>No-Darwin Baseline</td>
-          <td>No-Darwin</td>
-          <td>SWE-Mini</td>
-          <td>50</td>
-          <td>—</td>
-          <td>≈20.0%</td>
-          <td class="delta-neutral">0 pp</td>
-        </tr>
+        <tr><td>Small (rung 0)</td><td class="num">3</td><td class="num">&gt; 0</td><td>Kill zero-score agents</td><td class="num">~$0.05</td></tr>
+        <tr><td>Medium (rung 1)</td><td class="num">12</td><td class="num">&gt; parent</td><td>Filter weak mutations</td><td class="num">~$0.30</td></tr>
+        <tr><td>Full (rung 2)</td><td class="num">35</td><td class="num">&gt; parent</td><td>Confirm real improvement</td><td class="num">~$1.00</td></tr>
       </tbody>
     </table>
+    <p>Agents failing to meet the promotion threshold at any stage are killed before the next, more expensive evaluation.</p>
   </div>
+</details>
+
+<p class="col-narrow" style="padding:0;"><strong>SWE-bench Verified Mini</strong> — 50 real GitHub issues from Django, Sphinx, and other Python projects, verified by human annotators. The agent gets the problem, failing tests, and the full repo. No hints. Tests pass → resolved.</p>
 </section>
 
-<div class="section-separator"></div>
+<div class="break">* * *</div>
 
-<!-- EVOLUTION TIMELINE -->
-<section id="evolution" style="max-width:1100px; padding: 6rem 2rem;">
-  <div class="section-tag">&lt; 06 &gt; Evolution</div>
-  <h2 class="section-title">What the <span class="accent">Agent Learned</span></h2>
-  <div class="divider"></div>
-  <p style="color:var(--muted); margin-bottom:3rem; font-size:0.9rem;">Each generation the agent proposes targeted changes to its own source code. Here's what changed — and why it mattered.</p>
+<!-- ════ Results ══════════════════════════════════════ -->
+<section id="results">
+<h2>Results</h2>
+<p>The baseline scheduler has completed all 5 generations. Hyperband, GA, and ASHA runs are in progress.</p>
 
-  <div class="timeline">
-
-    <div class="timeline-item" id="tl-0">
-      <div class="timeline-dot initial"></div>
-      <div class="timeline-card">
-        <div class="timeline-gen">Generation 0 · Seed</div>
-        <div class="timeline-event">Initial Coding Agent — Baseline</div>
-        <div class="timeline-detail">A hand-crafted coding agent using GPT reasoning with bash and file-edit tools. Attempts SWE-bench tasks sequentially with a fixed reasoning prompt. No self-awareness of its own failures or patterns.</div>
-        <div class="timeline-badges">
-          <span class="badge score">20.0% accuracy</span>
-          <span class="badge neutral">12/60 resolved</span>
-          <span class="badge model">GPT-4o-mini</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="timeline-item" id="tl-1">
-      <div class="timeline-dot gen0"></div>
-      <div class="timeline-card">
-        <div class="timeline-gen">Generation 1 · First Mutation</div>
-        <div class="timeline-event">Atomic Patch Application + AST-Aware Editing</div>
-        <div class="timeline-detail">The meta-LLM diagnosed that the baseline agent frequently produced malformed patches — diffs that looked correct but failed to apply cleanly due to whitespace and context line mismatches. The mutation introduced atomic transactional editing: the agent now previews its edit, verifies the target context exists, then applies — rolling back on any mismatch. AST-aware editing was added to handle Python-specific constructs without corrupting indentation.</div>
-        <div class="timeline-badges">
-          <span class="badge score">50.0% accuracy</span>
-          <span class="badge delta">+30 pp</span>
-          <span class="badge model">GPT-4o-mini</span>
-          <span class="badge neutral">10-task subset</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="timeline-item" id="tl-future">
-      <div class="timeline-dot" style="border-color:var(--purple); box-shadow: 0 0 12px var(--purple); border-style:dashed;"></div>
-      <div class="timeline-card" style="border-style:dashed; opacity:0.7;">
-        <div class="timeline-gen" style="color:var(--purple);">Future Generations · Ongoing</div>
-        <div class="timeline-event">Further Self-Improvements in Progress</div>
-        <div class="timeline-detail">Potential targets identified by the diagnosis system: improved context management for long files, smarter test-verify loops, multi-step reasoning traces, and better handling of import resolution errors in patched modules.</div>
-        <div class="timeline-badges">
-          <span class="badge model" style="border-color:rgba(123,47,255,0.4); background:rgba(123,47,255,0.08);">In Exploration</span>
-        </div>
-      </div>
-    </div>
-
+<!-- Big stats banner -->
+<div class="stats-banner">
+  <div class="stat-big">
+    <span class="stat-big-v">20%</span>
+    <span class="stat-big-l">Initial Accuracy</span>
   </div>
+  <div class="stat-big">
+    <span class="stat-big-v" style="color:var(--c-ga);">50%</span>
+    <span class="stat-big-l">Best Child (Gen 4)</span>
+  </div>
+  <div class="stat-big">
+    <span class="stat-big-v">~$5</span>
+    <span class="stat-big-l">Total Cost</span>
+  </div>
+  <div class="stat-big">
+    <span class="stat-big-v">2.48h</span>
+    <span class="stat-big-l">Wall Time</span>
+  </div>
+</div>
+
+<p>The baseline agent started at <span class="big-num">20%</span> accuracy. After 5 generations and <span class="big-num">~$5</span> in compute, its best child reached <span class="big-num">50%</span> on a 14-task medium-stage evaluation — a <span class="big-num">+30 pp</span> improvement from a single targeted mutation to patch application logic.</p>
+<p>Most generations produced weak or broken children. <strong>Gen 4 was the breakthrough</strong> — the only generation where a child survived past the small-stage filter and scored well on medium.</p>
+
+<!-- Charts side by side -->
+<div class="two-col" style="margin:2rem 0;">
+  <div class="figure">
+    <div style="position:relative;height:280px;"><canvas id="performanceChart"></canvas></div>
+    <p class="fig-cap"><b>Figure 1.</b> Best child accuracy per generation. Baseline solid; others (dashed) pending. Gen 1 produced no children.</p>
+  </div>
+  <div class="figure">
+    <div style="position:relative;height:280px;"><canvas id="efficiencyChart"></canvas></div>
+    <p class="fig-cap"><b>Figure 2.</b> Cost vs. performance. Top-left is ideal. Points for other schedulers appear as runs complete.</p>
+  </div>
+</div>
+
+<details>
+  <summary>Full per-generation breakdown (interactive table)</summary>
+  <div class="det-body">
+    <div class="controls">
+      <div style="display:flex;gap:0.25rem;">
+        <button class="fbtn active" onclick="filterTable('all',this)">All</button>
+        <button class="fbtn" onclick="filterTable('baseline',this)" style="border-left:3px solid var(--c-baseline);">Baseline</button>
+        <button class="fbtn" onclick="filterTable('hyperband',this)" style="border-left:3px solid var(--c-hyperband);">Hyperband</button>
+        <button class="fbtn" onclick="filterTable('asha',this)" style="border-left:3px solid var(--c-asha);">ASHA</button>
+        <button class="fbtn" onclick="filterTable('ga',this)" style="border-left:3px solid var(--c-ga);">GA</button>
+      </div>
+      <span class="hint">click headers to sort</span>
+    </div>
+    <table class="rtable" id="results-table">
+      <thead>
+        <tr>
+          <th onclick="sortTable(0)" data-col="0">Scheduler <span class="sort-icon none"></span></th>
+          <th onclick="sortTable(1)" data-col="1">Gen <span class="sort-icon none"></span></th>
+          <th onclick="sortTable(2)" data-col="2">Tasks <span class="sort-icon none"></span></th>
+          <th onclick="sortTable(3)" data-col="3">Best Score <span class="sort-icon none"></span></th>
+          <th onclick="sortTable(4)" data-col="4">Time <span class="sort-icon none"></span></th>
+          <th onclick="sortTable(5)" data-col="5">Cost <span class="sort-icon none"></span></th>
+          <th onclick="sortTable(6)" data-col="6">Eff. (pp/$) <span class="sort-icon none"></span></th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="results-tbody">
+        <tr data-scheduler="baseline"><td><span class="sched-badge baseline">Baseline</span></td><td class="mono">0</td><td class="mono">6</td><td class="mono">33.3%</td><td class="mono">32 min</td><td class="mono">~$0.50</td><td><div class="eff-bar-wrap"><div class="eff-bar"><div class="eff-bar-fill" style="width:33%"></div></div><span class="mono" style="font-size:0.75rem">66.6</span></div></td><td><span class="badge-done">Done</span></td></tr>
+        <tr data-scheduler="baseline"><td><span class="sched-badge baseline">Baseline</span></td><td class="mono">1</td><td class="mono">0</td><td class="mono">—</td><td class="mono">~0</td><td class="mono">~$0</td><td><div class="eff-bar-wrap"><div class="eff-bar"><div class="eff-bar-fill" style="width:0%"></div></div><span class="mono" style="font-size:0.75rem;color:#999">—</span></div></td><td><span class="badge-done">Done</span></td></tr>
+        <tr data-scheduler="baseline"><td><span class="sched-badge baseline">Baseline</span></td><td class="mono">2</td><td class="mono">6</td><td class="mono">0%</td><td class="mono">6 min</td><td class="mono">~$0.50</td><td><div class="eff-bar-wrap"><div class="eff-bar"><div class="eff-bar-fill" style="width:0%"></div></div><span class="mono" style="font-size:0.75rem;color:#999">0</span></div></td><td><span class="badge-done">Done</span></td></tr>
+        <tr data-scheduler="baseline"><td><span class="sched-badge baseline">Baseline</span></td><td class="mono">3</td><td class="mono">3</td><td class="mono">0%</td><td class="mono">4 min</td><td class="mono">~$0.25</td><td><div class="eff-bar-wrap"><div class="eff-bar"><div class="eff-bar-fill" style="width:0%"></div></div><span class="mono" style="font-size:0.75rem;color:#999">0</span></div></td><td><span class="badge-done">Done</span></td></tr>
+        <tr data-scheduler="baseline"><td><span class="sched-badge baseline">Baseline</span></td><td class="mono">4</td><td class="mono">18</td><td class="mono">50.0%</td><td class="mono">106 min</td><td class="mono">~$3.75</td><td><div class="eff-bar-wrap"><div class="eff-bar"><div class="eff-bar-fill" style="width:100%"></div></div><span class="mono" style="font-size:0.75rem">13.3</span></div></td><td><span class="badge-done">Done</span></td></tr>
+        <tr data-scheduler="hyperband"><td><span class="sched-badge hyperband">Hyperband</span></td><td class="mono" colspan="6" style="color:#999;font-style:italic;font-size:0.82rem;">Results pending — run in progress</td><td><span class="badge-pending">Pending</span></td></tr>
+        <tr data-scheduler="ga"><td><span class="sched-badge ga">GA</span></td><td class="mono" colspan="6" style="color:#999;font-style:italic;font-size:0.82rem;">Results pending — run in progress</td><td><span class="badge-pending">Pending</span></td></tr>
+        <tr data-scheduler="asha"><td><span class="sched-badge asha">ASHA</span></td><td class="mono" colspan="6" style="color:#999;font-style:italic;font-size:0.82rem;">Results pending — run in progress</td><td><span class="badge-pending">Pending</span></td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:0.78rem;color:#999;margin-top:0.5rem;">* Gen 0 score (33.3%) on 3-task small stage. Gen 4 score (50%) on 14-task medium stage. Costs estimated from token usage.</p>
+  </div>
+</details>
 </section>
 
-<div class="section-separator"></div>
+<div class="break">* * *</div>
 
-<!-- RELATED WORK -->
-<section id="related" style="max-width:1100px; padding: 6rem 2rem;">
-  <div class="section-tag">&lt; 07 &gt; Related Work</div>
-  <h2 class="section-title">Standing on <span class="accent">Giants' Shoulders</span></h2>
-  <div class="divider"></div>
+<!-- ════ Evolution ════════════════════════════════════ -->
+<section id="evolution">
+<div class="col-narrow" style="padding:0;">
+  <h2>What the Agent Learned</h2>
+  <p>Each generation, the meta-LLM diagnoses failures and proposes code changes. Most mutations break things. Here's what actually worked.</p>
 
-  <div class="related-grid reveal">
-    <div class="related-card">
-      <div class="r-title">Original Gödel Machine (Schmidhuber 2003)</div>
-      <div class="r-desc">The theoretical predecessor: a self-referential agent that rewrites itself only when it can formally prove the rewrite improves expected utility. DGM replaces the formal proof with empirical validation.</div>
-      <span class="r-tag">foundation</span>
-    </div>
-    <div class="related-card">
-      <div class="r-title">DGM — Zhang et al. 2025</div>
-      <div class="r-desc">The original Darwin Gödel Machine paper from Sakana AI. Demonstrates open-ended self-improvement on SWE-bench and Polyglot. This thesis extends their framework with multi-fidelity scheduling.</div>
-      <span class="r-tag">arXiv:2505.22954</span>
-    </div>
-    <div class="related-card">
-      <div class="r-title">SWE-bench (Jimenez et al. 2023)</div>
-      <div class="r-desc">Benchmark of real GitHub issues from 12 popular Python repositories. Tasks require understanding codebases, reasoning about bugs, and generating valid patches that make failing tests pass.</div>
-      <span class="r-tag">benchmark</span>
-    </div>
-    <div class="related-card">
-      <div class="r-title">Hyperband (Li et al. 2018)</div>
-      <div class="r-desc">Multi-fidelity hyperparameter optimization. Allocates more resources to promising configurations while early-stopping poor ones. This thesis applies Hyperband to agent evaluation budgets.</div>
-      <span class="r-tag">scheduling</span>
-    </div>
-    <div class="related-card">
-      <div class="r-title">ASHA (Li et al. 2020)</div>
-      <div class="r-desc">Asynchronous Successive Halving — removes synchronization barriers from Hyperband, enabling continuous agent promotion without waiting for all siblings in a rung to complete.</div>
-      <span class="r-tag">scheduling</span>
-    </div>
-    <div class="related-card">
-      <div class="r-title">LLM-Based Coding Agents</div>
-      <div class="r-desc">SWE-agent, Devin, OpenHands, and other systems demonstrate that LLMs with tool access can solve real software engineering tasks — providing the capability foundation DGM evolves.</div>
-      <span class="r-tag">foundation</span>
+  <div class="evo-item">
+    <div class="evo-label">Generation 0 · Seed</div>
+    <div class="evo-title">Initial Coding Agent</div>
+    <p class="evo-text">Hand-crafted agent using LLM reasoning with bash and file-edit tools. Fixed reasoning prompt. No self-awareness of failure patterns. Achieves 20% on the full benchmark — 12 out of 60 tasks resolved.</p>
+    <div class="evo-metrics">
+      <span class="evo-tag good">20.0% accuracy</span>
+      <span class="evo-tag">12/60 resolved</span>
+      <span class="evo-tag">MiniMax M2.5</span>
     </div>
   </div>
+
+  <div class="evo-item">
+    <div class="evo-label">Generation 4 · Baseline · Best Child</div>
+    <div class="evo-title">Improved Patch Application Logic</div>
+    <p class="evo-text">The meta-LLM diagnosed frequent malformed diffs — patches that looked correct but failed on whitespace and context mismatches. The mutation introduced more robust patch handling for multi-file changes.</p>
+    <div class="evo-metrics">
+      <span class="evo-tag good">50.0% accuracy</span>
+      <span class="evo-tag improve">+30 pp (medium stage)</span>
+      <span class="evo-tag">MiniMax M2.5</span>
+      <span class="evo-tag">14-task subset</span>
+    </div>
+  </div>
+
+  <div class="evo-item" style="opacity:0.55;">
+    <div class="evo-label">Future Generations · In Progress</div>
+    <div class="evo-title">Further Self-Improvements Pending</div>
+    <p class="evo-text">Hyperband, GA, and ASHA runs ongoing. Targets: context management, test-verify loops, import resolution.</p>
+    <div class="evo-metrics"><span class="evo-tag">In Exploration</span></div>
+  </div>
+</div>
 </section>
 
-<div class="section-separator"></div>
+<div class="break">* * *</div>
 
-<!-- CONCLUSION -->
-<section id="conclusion" style="max-width:1100px; padding: 6rem 2rem;">
-  <div class="section-tag">&lt; 08 &gt; Conclusion</div>
-  <h2 class="section-title">What We <span class="accent">Found</span></h2>
-  <div class="divider"></div>
+<!-- ════ Timeline (horizontal) ════════════════════════ -->
+<section id="timeline">
+<h2>Project Timeline</h2>
+<div class="h-timeline">
+  <div class="h-tl-item">
+    <div class="h-tl-dot done"></div>
+    <div class="h-tl-date">Jan 2026</div>
+    <div class="h-tl-title">Literature Review</div>
+    <div class="h-tl-desc">Study DGM, Hyperband, ASHA. Define research question.</div>
+    <div class="h-tl-status s-done">Done</div>
+  </div>
+  <div class="h-tl-item">
+    <div class="h-tl-dot done"></div>
+    <div class="h-tl-date">Feb 2026</div>
+    <div class="h-tl-title">Implementation</div>
+    <div class="h-tl-desc">Four schedulers with unified interface. SWE-bench pipeline.</div>
+    <div class="h-tl-status s-done">Done</div>
+  </div>
+  <div class="h-tl-item">
+    <div class="h-tl-dot done"></div>
+    <div class="h-tl-date">Mar 2026</div>
+    <div class="h-tl-title">Testing &amp; Fixes</div>
+    <div class="h-tl-desc">End-to-end validation. MiniMax quirks. Budget constraint.</div>
+    <div class="h-tl-status s-done">Done</div>
+  </div>
+  <div class="h-tl-item">
+    <div class="h-tl-dot active"></div>
+    <div class="h-tl-date">Apr 2026</div>
+    <div class="h-tl-title">Experiments</div>
+    <div class="h-tl-desc">5 gens × 4 schedulers. Baseline done. Others ongoing.</div>
+    <div class="h-tl-status s-active">In Progress</div>
+  </div>
+  <div class="h-tl-item">
+    <div class="h-tl-dot planned"></div>
+    <div class="h-tl-date">May 2026</div>
+    <div class="h-tl-title">Analysis &amp; Writing</div>
+    <div class="h-tl-desc">Statistical comparison. Thesis chapters.</div>
+    <div class="h-tl-status s-planned">Planned</div>
+  </div>
+  <div class="h-tl-item">
+    <div class="h-tl-dot planned"></div>
+    <div class="h-tl-date">Jun 2026</div>
+    <div class="h-tl-title">Defense</div>
+    <div class="h-tl-desc">Submission to SDU.</div>
+    <div class="h-tl-status s-planned">Planned</div>
+  </div>
+</div>
+</section>
 
-  <div class="conclusion-grid reveal">
-    <div class="conclusion-col">
-      <h3>Achievements</h3>
-      <ul class="conclusion-list">
-        <li>Demonstrated that a coding agent can double its accuracy in a single self-improvement generation — from 20% to 50% on SWE-bench mini.</li>
-        <li>Implemented and validated four scheduling strategies (Baseline, GA, ASHA, Hyperband) with a unified scheduling interface.</li>
-        <li>Showed that targeted mutations — specifically patch application logic — have disproportionately large performance effects.</li>
-        <li>Built a reproducible, extensible DGM framework with shared archive management, token-based tie-breaking, and benchmark caching.</li>
-        <li>Confirmed that empirical validation (running the agent on real tasks) is a practical proxy for theoretical proof-of-improvement.</li>
+<div class="break">* * *</div>
+
+<!-- ════ References ═══════════════════════════════════ -->
+<section id="refs">
+<div class="col-narrow" style="padding:0;">
+  <h2>References</h2>
+  <p class="ref"><b>Schmidhuber (2003).</b> Original Gödel Machine — formal proof required for self-modification. DGM replaces this with empirical validation.</p>
+  <p class="ref"><b>Zhang, Hu, Lu, Lange &amp; Clune (2025).</b> Darwin Gödel Machine. Open-ended self-improvement on SWE-bench. <a href="https://arxiv.org/abs/2505.22954">arXiv:2505.22954</a></p>
+  <p class="ref"><b>Jimenez et al. (2023).</b> SWE-bench — benchmark of real GitHub issues from 12 Python repositories.</p>
+  <p class="ref"><b>Li et al. (2018).</b> Hyperband — multi-fidelity optimization with structured rung budgets.</p>
+  <p class="ref"><b>Li et al. (2020).</b> ASHA — async successive halving without synchronization barriers.</p>
+  <p class="ref"><b>SWE-agent, Devin, OpenHands.</b> Tool-augmented LLMs solving real software tasks at scale.</p>
+</div>
+</section>
+
+<div class="break">* * *</div>
+
+<!-- ════ Conclusion ═══════════════════════════════════ -->
+<section>
+<div class="col-narrow" style="padding:0;">
+  <h2>What We Found (So Far)</h2>
+  <p>A single targeted mutation — fixing patch application logic — took the agent from <span class="big-num">20%</span> to <span class="big-num">50%</span> accuracy for <span class="big-num">~$5</span> total. Most mutations broke things. The ones that worked were disproportionately impactful.</p>
+  <p>The comparative scheduler analysis — whether ASHA and Hyperband can find the same or better improvements more cheaply — is the primary remaining deliverable.</p>
+
+  <details>
+    <summary>Full achievements &amp; future work</summary>
+    <div class="det-body">
+      <p><strong>Achievements:</strong></p>
+      <ul style="margin-left:1.25rem;margin-bottom:0.75rem;">
+        <li>50% accuracy on medium-stage subset — up from 20% — in a single generation.</li>
+        <li>Four scheduling strategies with unified interface, compatible with original DGM.</li>
+        <li>Targeted mutations (patch logic) have disproportionate downstream effects.</li>
+        <li>Reproducible, budget-constrained framework with shared archive management.</li>
+        <li>Empirical validation as practical proxy for proof-of-improvement — works within $10.</li>
+      </ul>
+      <p><strong>Future Work:</strong></p>
+      <ul style="margin-left:1.25rem;">
+        <li>Complete Hyperband, GA, and ASHA runs for comparative efficiency analysis.</li>
+        <li>Additional generations — does improvement compound, plateau, or oscillate?</li>
+        <li>Population-based training (PBT) with concurrent evolution branches.</li>
+        <li>Cross-benchmark transfer: SWE-bench → Polyglot without fine-tuning.</li>
+        <li>Safety constraints for self-modified agents.</li>
       </ul>
     </div>
-    <div class="conclusion-col future">
-      <h3>Future Work</h3>
-      <ul class="conclusion-list">
-        <li>Run additional generations to observe whether improvement compounds or plateaus, and identify self-improvement phase transitions.</li>
-        <li>Extend multi-fidelity scheduling to support population-based training (PBT) with concurrent agent evolution branches.</li>
-        <li>Explore cross-benchmark transfer: agents trained on SWE-bench, tested on Polyglot without fine-tuning.</li>
-        <li>Investigate safety constraints: ensuring self-modified agents don't acquire unintended capabilities or bypass evaluation metrics.</li>
-        <li>Apply DGM to multi-agent systems where agents evolve both task skills and coordination protocols simultaneously.</li>
-      </ul>
-    </div>
-  </div>
+  </details>
 
-  <!-- Citation -->
-  <div class="reveal">
-    <h3 style="font-family:'Orbitron',sans-serif; font-size:0.85rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:1rem;">Cite This Work</h3>
-    <div class="bibtex">
-<span class="bib-key">@thesis{</span>dgm_bachelor_2026,<br>
-&nbsp;&nbsp;<span class="bib-field">title</span>     = {<span class="bib-value">Extending Darwin Gödel Machine: Multi-Fidelity Scheduling for Open-Ended Self-Improving Agents</span>},<br>
-&nbsp;&nbsp;<span class="bib-field">author</span>    = {<span class="bib-value">[Your Name]</span>},<br>
-&nbsp;&nbsp;<span class="bib-field">year</span>      = {<span class="bib-value">2026</span>},<br>
-&nbsp;&nbsp;<span class="bib-field">type</span>      = {<span class="bib-value">Bachelor's Thesis</span>},<br>
-&nbsp;&nbsp;<span class="bib-field">note</span>      = {<span class="bib-value">Extends arXiv:2505.22954 (Zhang et al.)</span>}<br>
-<span class="bib-key">}</span>
-    </div>
+  <h3>Citation</h3>
+  <div class="bib">
+<span class="bk">@thesis{</span>gianola_dgm_2026,<br>
+&nbsp;&nbsp;<span class="bf">title</span>   = {<span class="bv">Evaluating Scheduler Efficiency in Self-Improving AI Agents</span>},<br>
+&nbsp;&nbsp;<span class="bf">author</span>  = {<span class="bv">Gianola, Leonardo Giuseppe</span>},<br>
+&nbsp;&nbsp;<span class="bf">year</span>    = {<span class="bv">2026</span>},<br>
+&nbsp;&nbsp;<span class="bf">school</span>  = {<span class="bv">University of Southern Denmark</span>},<br>
+&nbsp;&nbsp;<span class="bf">type</span>    = {<span class="bv">Bachelor's Thesis</span>},<br>
+&nbsp;&nbsp;<span class="bf">note</span>    = {<span class="bv">Extends arXiv:2505.22954</span>}<br>
+<span class="bk">}</span>
   </div>
+</div>
 </section>
 
-<!-- FOOTER -->
 <footer>
-  <p style="margin-bottom:0.5rem;">
-    <strong style="color:var(--cyan); font-family:'Orbitron',sans-serif; font-size:0.85rem;">DARWIN GÖDEL MACHINE</strong>
-  </p>
-  <p>Bachelor Thesis · 2026 · Extending Zhang, Hu, Lu, Lange &amp; Clune (2025)</p>
-  <p style="margin-top:0.5rem;">
-    <a href="https://arxiv.org/abs/2505.22954">Original Paper</a> &nbsp;·&nbsp;
-    <a href="https://sakana.ai/dgm/">Sakana AI Blog</a> &nbsp;·&nbsp;
-    <a href="https://github.com">GitHub</a>
-  </p>
+  <span>Leonardo Giuseppe Gianola · SDU · 2026</span>
+  <span>
+    <a href="https://arxiv.org/abs/2505.22954">Original Paper</a>
+    <a href="#">GitHub</a>
+    <a href="#">Thesis PDF</a>
+  </span>
 </footer>
 
+</div><!-- .col -->
+
 <script>
-// ─── SCROLL PROGRESS ────────────────────────────────────
-const progressBar = document.getElementById('progress-bar');
-window.addEventListener('scroll', () => {
-  const scrollTop = window.scrollY;
-  const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-  progressBar.style.width = (scrollTop / docHeight * 100) + '%';
+/* ── Filter & Sort (no Chart.js dependency) ──────────── */
+function filterTable(s, btn) {
+  document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#results-tbody tr').forEach(r => {
+    r.classList.toggle('hidden', s !== 'all' && r.dataset.scheduler !== s);
+  });
+}
+
+/* ── Sort ─────────────────────────────────────────────── */
+let sortCol = -1, sortAsc = true;
+function sortTable(col) {
+  const tbody = document.getElementById('results-tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr:not(.hidden)'));
+  if (sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = true; }
+  document.querySelectorAll('[data-col]').forEach(th => {
+    const icon = th.querySelector('.sort-icon');
+    if (!icon) return;
+    const c = parseInt(th.dataset.col);
+    icon.className = 'sort-icon ' + (c === col ? (sortAsc ? 'asc' : 'desc') : 'none');
+    th.classList.toggle('sorted', c === col);
+  });
+  rows.sort((a, b) => {
+    const g = (r, c) => { const cells = r.querySelectorAll('td'); return cells[c] ? cells[c].textContent.trim() : ''; };
+    const av = g(a, col), bv = g(b, col);
+    const an = parseFloat(av.replace(/[^0-9.-]/g, '')), bn = parseFloat(bv.replace(/[^0-9.-]/g, ''));
+    const cmp = (!isNaN(an) && !isNaN(bn)) ? an - bn : av.localeCompare(bv);
+    return sortAsc ? cmp : -cmp;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+
+/* ── Charts ───────────────────────────────────────────── */
+const cf = { family: "'JetBrains Mono', monospace", size: 11 };
+const gc = 'rgba(0,0,0,0.06)';
+const tc = '#aaa';
+const baseline = '#71717a', hyperband = '#2563eb', ga = '#16a34a', asha = '#d97706';
+
+new Chart(document.getElementById('performanceChart').getContext('2d'), {
+  type: 'line',
+  data: {
+    labels: ['Gen 0', 'Gen 1', 'Gen 2', 'Gen 3', 'Gen 4'],
+    datasets: [
+      { label: 'Baseline', data: [33.3, null, 0, 0, 50.0], borderColor: baseline, backgroundColor: 'rgba(113,113,122,0.04)', pointBackgroundColor: baseline, pointRadius: 5, pointHoverRadius: 7, borderWidth: 2.5, fill: true, tension: 0.3, spanGaps: true },
+      { label: 'Hyperband', data: [null,null,null,null,null], borderColor: hyperband, pointBackgroundColor: hyperband, pointRadius: 4, borderWidth: 1.5, borderDash: [6,4], fill: false, tension: 0.3 },
+      { label: 'GA', data: [null,null,null,null,null], borderColor: ga, pointBackgroundColor: ga, pointRadius: 4, borderWidth: 1.5, borderDash: [6,4], fill: false, tension: 0.3 },
+      { label: 'ASHA', data: [null,null,null,null,null], borderColor: asha, pointBackgroundColor: asha, pointRadius: 4, borderWidth: 1.5, borderDash: [6,4], fill: false, tension: 0.3 },
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 300 },
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { labels: { color: tc, font: cf, padding: 14, usePointStyle: true, pointStyle: 'circle' } },
+      tooltip: { backgroundColor: '#fff', borderColor: '#ddd', borderWidth: 1, titleColor: '#1a1a1a', bodyColor: '#666',
+        callbacks: { label: ctx => ctx.parsed.y !== null ? ' ' + ctx.dataset.label + ': ' + ctx.parsed.y + '%' : ' ' + ctx.dataset.label + ': pending' }
+      }
+    },
+    scales: {
+      x: { grid: { color: gc }, ticks: { color: tc, font: cf } },
+      y: { min: 0, max: 70, grid: { color: gc }, ticks: { color: tc, font: cf, callback: v => v + '%' } }
+    }
+  }
 });
 
-// ─── HERO CANVAS ────────────────────────────────────────
-const canvas = document.getElementById('hero-canvas');
-const ctx = canvas.getContext('2d');
-let W, H, particles;
-
-function initCanvas() {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
-  particles = Array.from({ length: 80 }, () => ({
-    x: Math.random() * W,
-    y: Math.random() * H,
-    vx: (Math.random() - 0.5) * 0.4,
-    vy: (Math.random() - 0.5) * 0.4,
-    r: Math.random() * 1.5 + 0.5,
-    opacity: Math.random() * 0.5 + 0.2
-  }));
-}
-
-function drawCanvas() {
-  ctx.clearRect(0, 0, W, H);
-
-  // Grid
-  ctx.strokeStyle = 'rgba(0,212,255,0.04)';
-  ctx.lineWidth = 1;
-  const gridSize = 60;
-  for (let x = 0; x < W; x += gridSize) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-  }
-  for (let y = 0; y < H; y += gridSize) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-  }
-
-  // Particles + connections
-  for (let i = 0; i < particles.length; i++) {
-    const p = particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    if (p.x < 0 || p.x > W) p.vx *= -1;
-    if (p.y < 0 || p.y > H) p.vy *= -1;
-
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(0,212,255,${p.opacity})`;
-    ctx.fill();
-
-    for (let j = i + 1; j < particles.length; j++) {
-      const q = particles[j];
-      const dx = p.x - q.x, dy = p.y - q.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 120) {
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y);
-        ctx.strokeStyle = `rgba(0,212,255,${(1 - dist/120) * 0.15})`;
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
+new Chart(document.getElementById('efficiencyChart').getContext('2d'), {
+  type: 'scatter',
+  data: {
+    datasets: [
+      { label: 'Baseline', data: [{ x: 5.0, y: 50.0 }], backgroundColor: baseline, borderColor: baseline, pointRadius: 8, pointHoverRadius: 11, pointStyle: 'circle' },
+      { label: 'Hyperband', data: [], backgroundColor: hyperband, borderColor: hyperband, pointRadius: 8, pointStyle: 'triangle' },
+      { label: 'GA', data: [], backgroundColor: ga, borderColor: ga, pointRadius: 8, pointStyle: 'rect' },
+      { label: 'ASHA', data: [], backgroundColor: asha, borderColor: asha, pointRadius: 8, pointStyle: 'rectRot' },
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 300 },
+    plugins: {
+      legend: { labels: { color: tc, font: cf, padding: 14, usePointStyle: true } },
+      tooltip: { backgroundColor: '#fff', borderColor: '#ddd', borderWidth: 1, titleColor: '#1a1a1a', bodyColor: '#666',
+        callbacks: { label: ctx => ' ' + ctx.dataset.label + ' — $' + ctx.parsed.x + ', ' + ctx.parsed.y + '%' }
       }
+    },
+    scales: {
+      x: { title: { display: true, text: 'Total Cost ($)', color: tc, font: cf }, grid: { color: gc }, ticks: { color: tc, font: cf, callback: v => '$' + v } },
+      y: { min: 0, max: 70, title: { display: true, text: 'Best Score (%)', color: tc, font: cf }, grid: { color: gc }, ticks: { color: tc, font: cf, callback: v => v + '%' } }
     }
   }
-  requestAnimationFrame(drawCanvas);
-}
-
-initCanvas();
-drawCanvas();
-window.addEventListener('resize', initCanvas);
-
-// ─── COUNT-UP NUMBERS ───────────────────────────────────
-function countUp(el) {
-  const target = parseFloat(el.dataset.count);
-  const suffix = el.dataset.suffix || '';
-  const isFloat = el.hasAttribute('data-float');
-  const duration = 1500;
-  const start = performance.now();
-
-  function update(now) {
-    const elapsed = now - start;
-    const progress = Math.min(elapsed / duration, 1);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    const value = target * eased;
-    el.textContent = (isFloat ? value.toFixed(1) : Math.floor(value)) + suffix;
-    if (progress < 1) requestAnimationFrame(update);
-  }
-  requestAnimationFrame(update);
-}
-
-const counterObserver = new IntersectionObserver((entries) => {
-  entries.forEach(e => {
-    if (e.isIntersecting && !e.target.classList.contains('counted')) {
-      e.target.classList.add('counted');
-      countUp(e.target);
-    }
-  });
-}, { threshold: 0.5 });
-
-document.querySelectorAll('[data-count]').forEach(el => counterObserver.observe(el));
-
-// ─── REVEAL ON SCROLL ───────────────────────────────────
-const revealObserver = new IntersectionObserver((entries) => {
-  entries.forEach(e => {
-    if (e.isIntersecting) e.target.classList.add('visible');
-  });
-}, { threshold: 0.1 });
-
-document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
-
-// ─── TIMELINE ANIMATION ─────────────────────────────────
-const timelineObserver = new IntersectionObserver((entries) => {
-  entries.forEach(e => {
-    if (e.isIntersecting) e.target.classList.add('visible');
-  });
-}, { threshold: 0.15 });
-
-document.querySelectorAll('.timeline-item').forEach((el, i) => {
-  el.style.transitionDelay = `${i * 0.15}s`;
-  timelineObserver.observe(el);
 });
-
-// ─── LANGUAGE BARS ──────────────────────────────────────
-const langObserver = new IntersectionObserver((entries) => {
-  entries.forEach(e => {
-    if (e.isIntersecting) {
-      e.target.querySelectorAll('.lang-fill').forEach(bar => {
-        bar.style.width = bar.dataset.width + '%';
-      });
-      langObserver.unobserve(e.target);
-    }
-  });
-}, { threshold: 0.3 });
-
-const langBars = document.getElementById('lang-bars');
-if (langBars) langObserver.observe(langBars);
-
-// ─── CHART.JS CHARTS ────────────────────────────────────
-Chart.defaults.color = '#6b8fa3';
-Chart.defaults.font.family = "'Space Grotesk', sans-serif";
-
-let perfChartDrawn = false;
-let benchChartDrawn = false;
-
-const chartObserver = new IntersectionObserver((entries) => {
-  entries.forEach(e => {
-    if (!e.isIntersecting) return;
-    const canvas = e.target.querySelector('canvas');
-    if (!canvas) return;
-    if (canvas.id === 'performanceChart' && !perfChartDrawn) {
-      perfChartDrawn = true;
-      drawPerformanceChart();
-    }
-    if (canvas.id === 'benchmarkChart' && !benchChartDrawn) {
-      benchChartDrawn = true;
-      drawBenchmarkChart();
-    }
-  });
-}, { threshold: 0.3 });
-
-document.querySelectorAll('.chart-container').forEach(el => chartObserver.observe(el));
-
-function drawPerformanceChart() {
-  const ctx = document.getElementById('performanceChart').getContext('2d');
-  new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: ['Initial', 'Gen 0 Child', 'Gen 1 (projected)', 'Gen 2 (projected)', 'Gen 3 (projected)'],
-      datasets: [
-        {
-          label: 'DGM (GA Scheduler)',
-          data: [20, 50, null, null, null],
-          borderColor: '#00d4ff',
-          backgroundColor: 'rgba(0,212,255,0.08)',
-          pointBackgroundColor: '#00d4ff',
-          pointBorderColor: '#00d4ff',
-          pointRadius: 6,
-          pointHoverRadius: 9,
-          borderWidth: 2.5,
-          fill: true,
-          tension: 0.4,
-        },
-        {
-          label: 'No-Darwin Baseline',
-          data: [20, 20, 20, 20, 20],
-          borderColor: '#6b8fa3',
-          borderDash: [8, 4],
-          borderWidth: 1.5,
-          pointRadius: 3,
-          pointBackgroundColor: '#6b8fa3',
-          fill: false,
-          tension: 0,
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      animation: { duration: 1500, easing: 'easeInOutQuart' },
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: {
-          labels: { color: '#6b8fa3', font: { size: 12 }, padding: 20 }
-        },
-        tooltip: {
-          backgroundColor: '#0a1628',
-          borderColor: 'rgba(0,212,255,0.3)',
-          borderWidth: 1,
-          titleColor: '#00d4ff',
-          bodyColor: '#e8f4f8',
-          callbacks: {
-            label: (ctx) => ctx.parsed.y !== null ? ` ${ctx.dataset.label}: ${ctx.parsed.y}%` : ` ${ctx.dataset.label}: TBD`
-          }
-        }
-      },
-      scales: {
-        x: {
-          grid: { color: 'rgba(255,255,255,0.04)' },
-          ticks: { color: '#6b8fa3', font: { size: 11 } }
-        },
-        y: {
-          min: 0,
-          max: 80,
-          grid: { color: 'rgba(255,255,255,0.04)' },
-          ticks: {
-            color: '#6b8fa3',
-            font: { size: 11 },
-            callback: v => v + '%'
-          }
-        }
-      }
-    }
-  });
-}
-
-function drawBenchmarkChart() {
-  const ctx = document.getElementById('benchmarkChart').getContext('2d');
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: ['SWE-bench Mini\n(Initial)', 'SWE-bench Mini\n(Gen 0 Child)', 'Polyglot\n(Initial)'],
-      datasets: [{
-        label: 'Accuracy (%)',
-        data: [20, 50, 14.2],
-        backgroundColor: [
-          'rgba(107,143,163,0.4)',
-          'rgba(0,212,255,0.4)',
-          'rgba(123,47,255,0.4)',
-        ],
-        borderColor: [
-          '#6b8fa3',
-          '#00d4ff',
-          '#7b2fff',
-        ],
-        borderWidth: 1.5,
-        borderRadius: 4,
-      }]
-    },
-    options: {
-      responsive: true,
-      animation: { duration: 1200, easing: 'easeOutBounce' },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#0a1628',
-          borderColor: 'rgba(0,212,255,0.3)',
-          borderWidth: 1,
-          titleColor: '#00d4ff',
-          bodyColor: '#e8f4f8',
-          callbacks: { label: ctx => ` Accuracy: ${ctx.parsed.y}%` }
-        }
-      },
-      scales: {
-        x: {
-          grid: { color: 'rgba(255,255,255,0.04)' },
-          ticks: { color: '#6b8fa3', font: { size: 11 } }
-        },
-        y: {
-          min: 0,
-          max: 65,
-          grid: { color: 'rgba(255,255,255,0.04)' },
-          ticks: { color: '#6b8fa3', callback: v => v + '%' }
-        }
-      }
-    }
-  });
-}
-
-// ─── ALGORITHM WALKTHROUGH ──────────────────────────────
-let currentStep = 0;
-const totalSteps = 5;
-
-function showStep(n) {
-  document.querySelectorAll('.step-content').forEach((el, i) => {
-    el.classList.toggle('active', i === n);
-  });
-  document.querySelectorAll('.step-btn').forEach((el, i) => {
-    el.classList.toggle('active', i === n);
-  });
-  document.getElementById('prev-btn').disabled = n === 0;
-  document.getElementById('next-btn').disabled = n === totalSteps - 1;
-  document.getElementById('step-counter').textContent = `Step ${n + 1} of ${totalSteps}`;
-  currentStep = n;
-}
-
-function changeStep(delta) {
-  const next = currentStep + delta;
-  if (next >= 0 && next < totalSteps) showStep(next);
-}
-
-// ─── ACCORDION ──────────────────────────────────────────
-function toggleAccordion(el) {
-  const body = el.querySelector('.acc-body');
-  const icon = el.querySelector('.acc-icon');
-  const isOpen = body.style.display === 'block';
-  body.style.display = isOpen ? 'none' : 'block';
-  icon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
-}
-
-// ─── ARCH NODE ANIMATION ─────────────────────────────────
-const archNodes = ['arch-problem', 'arch-agent', 'arch-eval', 'arch-meta'];
-let archIdx = 0;
-setInterval(() => {
-  document.querySelectorAll('.arch-node').forEach(n => n.classList.remove('active-node'));
-  const el = document.getElementById(archNodes[archIdx]);
-  if (el) el.classList.add('active-node');
-  archIdx = (archIdx + 1) % archNodes.length;
-}, 1200);
-
 </script>
 </body>
 </html>

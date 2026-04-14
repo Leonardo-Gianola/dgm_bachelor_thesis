@@ -30,3 +30,5 @@ final_results/
 analysis/output/
 
 experiments/state/
+
+website/chart.min.js
