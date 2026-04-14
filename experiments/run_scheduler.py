@@ -287,21 +287,24 @@ def _print_summary(scheduler: str, state: dict, seeds: list):
         if run_dir and run_dir not in ("(unknown)", "(dry_run)"):
             jsonl = Path(run_dir) / "dgm_metadata.jsonl"
             if jsonl.exists():
-                lines = []
-                for l in jsonl.read_text().strip().split("\n"):
-                    if l.strip():
-                        try:
-                            json.loads(l)
-                            lines.append(l)
-                        except json.JSONDecodeError:
-                            pass
-                if lines:
-                    last = json.loads(lines[-1])
+                generations = []
+                for chunk in jsonl.read_text().split("\n{"):
+                    chunk = chunk.strip()
+                    if not chunk:
+                        continue
+                    if not chunk.startswith("{"):
+                        chunk = "{" + chunk
+                    try:
+                        generations.append(json.loads(chunk))
+                    except json.JSONDecodeError:
+                        pass
+                if generations:
+                    last = generations[-1]
                     print(
                         f"         Final gen {last.get('generation')}  "
                         f"best={_fmt_score(last.get('best_child_score'))}  "
                         f"archive={last.get('archive_size')}  "
-                        f"total_tasks≈{sum(json.loads(l).get('evaluation_budget_tasks_consumed',0) for l in lines if l.strip())}"
+                        f"total_tasks≈{sum(g.get('evaluation_budget_tasks_consumed', 0) for g in generations)}"
                     )
 
 
