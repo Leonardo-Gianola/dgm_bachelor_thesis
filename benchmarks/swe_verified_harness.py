@@ -129,7 +129,7 @@ def process_entry(entry, out_dname, model_name_or_path, model_patch_paths):
         safe_log("Running the agent")
         cmd = [
             "timeout",
-            "32400",
+            "1800",
             "python",
             "/dgm/coding_agent.py",
             "--problem_statement",
