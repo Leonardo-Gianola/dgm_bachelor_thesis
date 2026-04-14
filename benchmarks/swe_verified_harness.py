@@ -109,6 +109,14 @@ def process_entry(entry, out_dname, model_name_or_path, model_patch_paths):
         exec_result = container.exec_run("python -m pip install -r /dgm/requirements.txt", workdir="/")
         log_container_output(exec_result)
 
+        # Install roman into testbed conda env (needed by sphinx tasks for latex.py)
+        safe_log("Installing roman into testbed env")
+        exec_result = container.exec_run(
+            "/bin/bash -c 'source /opt/miniconda3/bin/activate && conda activate testbed && pip install roman'",
+            workdir="/"
+        )
+        log_container_output(exec_result)
+
         env_vars = {
             "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY"),
             "AWS_REGION": os.getenv("AWS_REGION"),

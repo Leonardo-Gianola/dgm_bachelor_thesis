@@ -32,3 +32,4 @@ analysis/output/
 experiments/state/
 
 website/chart.min.js
+manual_benchmark_runs/
