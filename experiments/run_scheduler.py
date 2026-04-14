@@ -287,7 +287,14 @@ def _print_summary(scheduler: str, state: dict, seeds: list):
         if run_dir and run_dir not in ("(unknown)", "(dry_run)"):
             jsonl = Path(run_dir) / "dgm_metadata.jsonl"
             if jsonl.exists():
-                lines = [l for l in jsonl.read_text().strip().split("\n") if l.strip()]
+                lines = []
+                for l in jsonl.read_text().strip().split("\n"):
+                    if l.strip():
+                        try:
+                            json.loads(l)
+                            lines.append(l)
+                        except json.JSONDecodeError:
+                            pass
                 if lines:
                     last = json.loads(lines[-1])
                     print(
