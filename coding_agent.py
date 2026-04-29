@@ -4,6 +4,7 @@ import subprocess
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+import re
 import threading
 
 from llm_withtools import OPENAI_MODEL, chat_with_agent
@@ -64,6 +65,31 @@ def safe_log(message, level=logging.INFO):
     else:
         print(f"Warning: No logger found for thread {threading.get_ident()}")
 
+def is_patch_empty(patch_str):
+    """Check if a patch string is empty or whitespace-only."""
+    return not patch_str or not patch_str.strip()
+
+
+def is_test_only_patch(patch_str):
+    """Check if a patch only modifies test files (under test/ or tests/ dirs)."""
+    if not patch_str or not patch_str.strip():
+        return False
+    file_pattern = re.compile(r'diff --git a/(.*?) b/(.*?)(?:\n|$)')
+    files_in_patch = {m.group(1) for m in file_pattern.finditer(patch_str)}
+    if not files_in_patch:
+        return False
+    return all(f.startswith(('test/', 'tests/')) for f in files_in_patch)
+
+
+def validate_patch(patch_str):
+    """Validate patch: not empty and not test-only. Returns (is_valid, reason)."""
+    if is_patch_empty(patch_str):
+        return False, "patch is empty"
+    if is_test_only_patch(patch_str):
+        return False, "patch only modifies test files"
+    return True, "valid"
+
+
 class AgenticSystem:
     def __init__(
             self,
@@ -74,6 +100,7 @@ class AgenticSystem:
             test_description=None,
             self_improve=False,
             instance_id=None,
+            max_retries=3,
         ):
         self.problem_statement = problem_statement
         self.git_tempdir = git_tempdir
@@ -83,6 +110,7 @@ class AgenticSystem:
         self.self_improve = self_improve
         self.instance_id = instance_id if not self_improve else 'dgm'
         self.code_model = OPENAI_MODEL
+        self.max_retries = max_retries
         self.last_token_usage = {
             "input_tokens": 0,
             "output_tokens": 0,
@@ -155,11 +183,9 @@ Your task is to run the regression tests in the {self.git_tempdir} directory to 
         test_report = msg_history_to_report(self.instance_id, new_msg_history, model=self.code_model)
         return test_report
 
-    def forward(self):
-        """
-        The forward function for the AgenticSystem.
-        """
-        instruction = f"""I have uploaded a Python code repository in the directory {self.git_tempdir}. Help solve the following problem.
+    def _build_instruction(self, retry_reason=None):
+        """Build the instruction prompt, with stronger wording on retries."""
+        base = f"""I have uploaded a Python code repository in the directory {self.git_tempdir}. Help solve the following problem.
 
 <problem_description>
 {self.problem_statement}
@@ -170,7 +196,26 @@ Your task is to run the regression tests in the {self.git_tempdir} directory to 
 </test_description>
 
 Your task is to make changes to the files in the {self.git_tempdir} directory to address the <problem_description>. I have already taken care of the required dependencies.
+
+CRITICAL INSTRUCTIONS — YOU MUST FOLLOW THESE:
+1. You MUST use the editor tool with command "edit" or "create" to modify source files, or use the bash tool to write files. Do NOT just describe changes — actually apply them.
+2. After making changes, verify them by using the bash tool to run: git diff
+3. Your changes MUST appear in the git diff. If no files are modified, the task is considered FAILED.
+4. Focus on modifying the PRIMARY SOURCE CODE, not just test files.
 """
+        if retry_reason:
+            base += f"""
+WARNING: Your previous attempt FAILED because: {retry_reason}.
+You MUST actually edit files this time. Use the editor tool with command="edit" and provide the full file_text, or use bash to write files directly.
+"""
+        return base
+
+    def forward(self):
+        """
+        The forward function with retry logic for empty/invalid patches.
+        """
+        instruction = self._build_instruction()
+
         new_msg_history, token_usage = chat_with_agent(
             instruction,
             model=self.code_model,
@@ -179,6 +224,40 @@ Your task is to make changes to the files in the {self.git_tempdir} directory to
             return_usage=True,
         )
         self.last_token_usage = token_usage
+
+        # Validate the generated patch
+        patch = diff_versus_commit(self.git_tempdir, self.base_commit)
+        is_valid, reason = validate_patch(patch)
+
+        attempt = 1
+        while not is_valid and attempt < self.max_retries:
+            safe_log(f"Patch validation failed: {reason}. Retry {attempt + 1}/{self.max_retries}")
+
+            # Reset to base commit before retry
+            reset_to_commit(self.git_tempdir, self.base_commit)
+
+            # Retry with stronger instruction
+            retry_instruction = self._build_instruction(retry_reason=reason)
+            new_msg_history, token_usage = chat_with_agent(
+                retry_instruction,
+                model=self.code_model,
+                msg_history=[],
+                logging=safe_log,
+                return_usage=True,
+            )
+            self.last_token_usage = {
+                "input_tokens": self.last_token_usage["input_tokens"] + token_usage["input_tokens"],
+                "output_tokens": self.last_token_usage["output_tokens"] + token_usage["output_tokens"],
+                "total_tokens": self.last_token_usage["total_tokens"] + token_usage["total_tokens"],
+            }
+
+            patch = diff_versus_commit(self.git_tempdir, self.base_commit)
+            is_valid, reason = validate_patch(patch)
+            attempt += 1
+
+        if not is_valid:
+            safe_log(f"Patch validation failed after {self.max_retries} attempts: {reason}")
+
         return new_msg_history
 
 def main():

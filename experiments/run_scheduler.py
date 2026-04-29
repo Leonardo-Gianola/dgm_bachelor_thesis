@@ -47,10 +47,10 @@ STATE_DIR = Path(__file__).parent / "state"
 RESULTS_DIR = Path(__file__).parent / "results"
 PYTHON = sys.executable
 
-# Budget cap per generation. Baseline/GA: 2 children get small+medium only (30 tasks).
-# Hyperband/ASHA: auto-selects n=1 child through all 3 stages (50 tasks exactly).
-# Total: 4 schedulers × 1 seed × 5 gens × avg(40 tasks) ≈ 800 tasks ≈ $80.
-GENERATION_TASK_BUDGET = 50
+# Budget cap per generation. Set to 100 (full task set) — children only consume
+# what they actually reach through staged promotion. A child killed at stage 1
+# costs 3 tasks; one that goes all the way costs ~50.
+GENERATION_TASK_BUDGET = 100
 
 SCHEDULER_ARGS = {
     "baseline": [
