@@ -440,6 +440,93 @@ table.simple td.num { font-family: 'JetBrains Mono', monospace; font-size: 0.82r
 }
 .bk { color: #2563eb; } .bf { color: #7c3aed; } .bv { color: #16a34a; }
 
+/* ── Running Figures (fixed right sidebar) ───────────── */
+.ns-runners {
+  position: fixed;
+  right: 2rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.6s;
+}
+.ns-runners.visible { opacity: 1; }
+@media (max-width: 1300px) { .ns-runners { display: none; } }
+
+.ns-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #1a1a1a;
+  position: relative;
+  transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.6s ease,
+              color 0.4s ease,
+              filter 0.5s ease;
+}
+.ns-figure svg { width: 30px; height: 48px; }
+
+/* Running limb animation */
+@keyframes ns-run {
+  0%, 100% { transform: rotate(-30deg); }
+  50% { transform: rotate(30deg); }
+}
+.ns-figure .al, .ns-figure .lr { animation: ns-run 0.32s ease-in-out infinite; }
+.ns-figure .ar, .ns-figure .ll { animation: ns-run 0.32s ease-in-out infinite reverse; }
+
+/* Vertical bob while running */
+@keyframes ns-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+.ns-figure svg { animation: ns-bob 0.32s ease-in-out infinite; }
+
+/* Dying */
+.ns-figure.dying {
+  transform: rotate(var(--fall-dir, 85deg)) translateX(8px);
+  opacity: 0.08;
+  color: #ccc;
+}
+.ns-figure.dying svg,
+.ns-figure.dying .al, .ns-figure.dying .ar,
+.ns-figure.dying .ll, .ns-figure.dying .lr { animation: none; }
+
+/* Survivor */
+.ns-figure.survivor {
+  color: var(--c-ga);
+  filter: drop-shadow(0 0 12px rgba(22, 163, 106, 0.4));
+  transform: scale(1.25);
+}
+.ns-figure.survivor .ns-score { color: var(--c-ga); font-weight: 600; }
+@keyframes ns-pulse {
+  0%, 100% { transform: scale(1.25); }
+  50% { transform: scale(1.35); }
+}
+.ns-figure.pulsing { animation: ns-pulse 2s ease-in-out infinite; }
+
+.ns-score {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.58rem;
+  margin-top: 0.1rem;
+  opacity: 0.75;
+  transition: opacity 0.3s;
+}
+.ns-crown {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%) scale(0);
+  font-size: 0.75rem;
+  line-height: 1;
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.ns-figure.survivor .ns-crown { transform: translateX(-50%) scale(1); }
+
 /* ── Footer ───────────────────────────────────────────── */
 footer {
   border-top: 1px solid #e5e5e5; margin-top: 2.5rem;
@@ -1020,6 +1107,9 @@ footer a:hover { color: #2563eb; }
 
 </div><!-- .col -->
 
+<!-- ═══ Running Figures (fixed sidebar) ═══════════════ -->
+<div class="ns-runners" id="ns-runners"></div>
+
 <script>
 /* ── Filter & Sort (no Chart.js dependency) ──────────── */
 function filterTable(s, btn) {
@@ -1112,6 +1202,83 @@ new Chart(document.getElementById('efficiencyChart').getContext('2d'), {
     }
   }
 });
+/* ── Running Figures — scroll-driven elimination ─────── */
+(function() {
+  var el = document.getElementById('ns-runners');
+  if (!el) return;
+
+  // Figure data: score, color, fall direction, survivor flag
+  var data = [
+    { s:'0%',  c:'#dc2626', fd:-85 },
+    { s:'4%',  c:'#999',    fd:82  },
+    { s:'0%',  c:'#dc2626', fd:78  },
+    { s:'12%', c:'#d97706', fd:-80 },
+    { s:'8%',  c:'#999',    fd:-78 },
+    { s:'0%',  c:'#dc2626', fd:84  },
+    { s:'2%',  c:'#999',    fd:-82 },
+    { s:'50%', c:'#16a34a', fd:0, surv:true },
+    { s:'6%',  c:'#999',    fd:86  },
+    { s:'0%',  c:'#dc2626', fd:-86 }
+  ];
+
+  // Kill order: weakest first, spread across page scroll
+  // [figIndex, scrollThreshold]
+  var killOrder = [
+    [0, 0.08], [2, 0.15], [5, 0.22], [9, 0.29],  // 0% agents
+    [6, 0.38], [1, 0.45], [8, 0.52], [4, 0.59],   // weak agents
+    [3, 0.68]                                        // 12% agent
+  ];
+  var survivorIdx = 7;
+
+  // SVG template with animated limbs
+  var svg = '<svg viewBox="0 0 40 64" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">' +
+    '<circle cx="20" cy="10" r="7"/>' +
+    '<line x1="20" y1="17" x2="20" y2="40"/>' +
+    '<g class="al" style="transform-origin:20px 26px"><line x1="20" y1="26" x2="12" y2="36"/></g>' +
+    '<g class="ar" style="transform-origin:20px 26px"><line x1="20" y1="26" x2="28" y2="36"/></g>' +
+    '<g class="ll" style="transform-origin:20px 40px"><line x1="20" y1="40" x2="13" y2="56"/></g>' +
+    '<g class="lr" style="transform-origin:20px 40px"><line x1="20" y1="40" x2="27" y2="56"/></g>' +
+    '</svg>';
+
+  // Build figures
+  var html = '';
+  data.forEach(function(d, i) {
+    var style = d.surv ? '' : '--fall-dir:' + d.fd + 'deg';
+    // Stagger run animation per figure
+    var offset = (i * 0.04).toFixed(2);
+    html += '<div class="ns-figure" style="' + style + ';animation-delay:-' + offset + 's">' +
+      (d.surv ? '<span class="ns-crown">\uD83D\uDC51</span>' : '') +
+      svg +
+      '<span class="ns-score" style="color:' + d.c + '">' + d.s + '</span>' +
+      '</div>';
+  });
+  el.innerHTML = html;
+
+  var figures = el.querySelectorAll('.ns-figure');
+
+  function update() {
+    var scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+    var scrollH = document.documentElement.scrollHeight - window.innerHeight;
+    if (scrollH <= 0) return;
+    var p = scrollTop / scrollH;
+
+    // Show runners when scrolled into content, hide at top/bottom
+    el.classList.toggle('visible', p > 0.04 && p < 0.95);
+
+    // Kill figures based on scroll progress
+    killOrder.forEach(function(k) {
+      figures[k[0]].classList.toggle('dying', p > k[1]);
+    });
+
+    // Survivor highlight
+    var allDead = p > 0.72;
+    figures[survivorIdx].classList.toggle('survivor', allDead);
+    figures[survivorIdx].classList.toggle('pulsing', p > 0.80);
+  }
+
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+})();
 </script>
 </body>
 </html>
