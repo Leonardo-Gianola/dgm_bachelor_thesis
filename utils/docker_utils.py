@@ -2,6 +2,7 @@ import io
 import logging
 import subprocess
 import threading
+import time
 from pathlib import Path
 import tarfile
 from typing import Optional, Union
@@ -189,9 +190,15 @@ def build_dgm_container(
         image_name='app',
         container_name='app-container',
         force_rebuild=False,
+        max_retries=3,
     ):
     """
     Build the Docker image for the dgm app and start a container from it.
+
+    Container start is retried with exponential backoff because Docker daemon
+    can transiently fail under concurrent-container-startup pressure (observed
+    on consumer hardware with 5+ parallel sweb.eval containers competing for
+    the same daemon).
     """
     try:
         # Build the Docker image if force_rebuild is set or the image doesn't exist
@@ -210,16 +217,29 @@ def build_dgm_container(
         safe_log(f"Error while building the Docker image: {e}")
         return None
 
-    try:
-        # Run the container
-        container = client.containers.run(image=image_name, name=container_name, detach=True)
-        sync_repo_to_container(container, repo_path, '/dgm')
-        reset_container_git_repo(container, '/dgm')
-        safe_log(f"Container '{container_name}' started successfully.")
-        return container
-    except Exception as e:
-        safe_log(f"Error while starting the container: {e}")
-        return None
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            container = client.containers.run(image=image_name, name=container_name, detach=True)
+            sync_repo_to_container(container, repo_path, '/dgm')
+            reset_container_git_repo(container, '/dgm')
+            safe_log(f"Container '{container_name}' started successfully (attempt {attempt}/{max_retries}).")
+            return container
+        except Exception as e:
+            last_error = e
+            safe_log(f"Container start attempt {attempt}/{max_retries} failed: {e}")
+            # Clean up any half-started container before retrying so the name is free.
+            try:
+                remove_existing_container(client, container_name)
+            except Exception as cleanup_err:
+                safe_log(f"Cleanup before retry failed (ignored): {cleanup_err}")
+            if attempt < max_retries:
+                backoff_seconds = 10 * (2 ** (attempt - 1))  # 10s, 20s, 40s
+                safe_log(f"Waiting {backoff_seconds}s before retry...")
+                time.sleep(backoff_seconds)
+
+    safe_log(f"Container '{container_name}' failed to start after {max_retries} attempts; last error: {last_error}")
+    return None
 
 def cleanup_container(container):
     """
