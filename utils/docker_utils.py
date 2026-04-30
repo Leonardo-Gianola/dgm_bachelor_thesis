@@ -11,6 +11,33 @@ import docker
 # Thread-local storage for loggers
 _thread_local = threading.local()
 
+# Per-image-name locks so concurrent build_dgm_container calls serialize the
+# image-build phase but still parallelize container starts. Without this,
+# two threads could both pass the "image exists?" check simultaneously and
+# kick off duplicate `docker build` runs that race on pip layers.
+_image_build_locks: dict = {}
+_image_build_locks_guard = threading.Lock()
+
+
+def _get_image_build_lock(image_name: str) -> threading.Lock:
+    with _image_build_locks_guard:
+        return _image_build_locks.setdefault(image_name, threading.Lock())
+
+
+def _image_exists(client, image_name: str) -> bool:
+    """Whether an image tagged `<image_name>:<anything>` already exists.
+
+    The previous check `image_name in image.tags` performed list membership
+    against full tag strings (e.g. `'dgm' in ['dgm:latest']` is False because
+    the list contains `'dgm:latest'`, not `'dgm'`). That made every call
+    treat the image as missing and rebuild it on every generation.
+    """
+    for image in client.images.list():
+        for tag in (image.tags or []):
+            if tag.split(':', 1)[0] == image_name:
+                return True
+    return False
+
 def get_thread_logger():
     """Get the logger instance specific to the current thread."""
     return getattr(_thread_local, 'logger', None)
@@ -200,19 +227,19 @@ def build_dgm_container(
     on consumer hardware with 5+ parallel sweb.eval containers competing for
     the same daemon).
     """
+    image_lock = _get_image_build_lock(image_name)
     try:
-        # Build the Docker image if force_rebuild is set or the image doesn't exist
-        if force_rebuild or not any(image.tags for image in client.images.list() if image_name in image.tags):
-            safe_log("Building the Docker image...")
-            image, logs = client.images.build(path=repo_path, tag=image_name, rm=True)
-            for log_entry in logs:
-                if 'stream' in log_entry:
-                    safe_log(log_entry['stream'].strip())
-            safe_log("Image built successfully.")
-        else:
-            safe_log(f"Docker image '{image_name}' already exists. Skipping build.")
-            # Fetch the existing image
-            image = next((img for img in client.images.list() if image_name in img.tags), None)
+        with image_lock:
+            # Re-check inside the lock — another thread may have just built it.
+            if force_rebuild or not _image_exists(client, image_name):
+                safe_log(f"Building the Docker image '{image_name}' (lock held; single builder)...")
+                _, logs = client.images.build(path=repo_path, tag=image_name, rm=True)
+                for log_entry in logs:
+                    if 'stream' in log_entry:
+                        safe_log(log_entry['stream'].strip())
+                safe_log("Image built successfully.")
+            else:
+                safe_log(f"Docker image '{image_name}' already exists. Skipping build.")
     except Exception as e:
         safe_log(f"Error while building the Docker image: {e}")
         return None
