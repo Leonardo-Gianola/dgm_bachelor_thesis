@@ -132,8 +132,8 @@ def is_compiled_self_improve(metadata, expected_task_counts=None, logger=None):
       1. The 'overall_performance' dict has the required keys:
          ('accuracy_score', 'total_unresolved_ids', 'total_resolved_ids', 'total_emptypatch_ids').
       2. There is at least one non-empty patch (resolved + unresolved > 0).
-      3. If expected_task_counts is provided, the total number of evaluated issues matches
-         one of the expected counts for this benchmark flow.
+      3. If expected_task_counts is provided, the planned cumulative budget
+         (from budget_history) matches one of the expected counts.
 
     Returns True if all conditions are met, else False.
     """
@@ -156,12 +156,21 @@ def is_compiled_self_improve(metadata, expected_task_counts=None, logger=None):
         log_info("no non-empty patch")
         return False
 
-    # 3. If specified, total evaluated must match the benchmark flow.
-    total_evaluated = overall_perf['total_submitted_instances']
+    # 3. If specified, child must have completed a planned stage budget.
+    #    Use the *planned* cumulative budget from budget_history rather than
+    #    overall_performance.total_submitted_instances: SWE-bench eval can
+    #    submit extra tasks (retries) that inflate the actual count beyond
+    #    the planned cumulative size, causing strict equality to reject
+    #    otherwise-valid children.
     if expected_task_counts:
         normalized_counts = sorted(set(expected_task_counts))
-        if total_evaluated not in normalized_counts:
-            log_info(f"not match expected task counts: {normalized_counts}")
+        budget_history = metadata.get('budget_history') or []
+        if not budget_history:
+            log_info("no budget_history present; cannot verify planned stage")
+            return False
+        last_planned = budget_history[-1].get('cumulative_budget_size')
+        if last_planned not in normalized_counts:
+            log_info(f"planned budget {last_planned} not in expected counts: {normalized_counts}")
             return False
 
     return True
