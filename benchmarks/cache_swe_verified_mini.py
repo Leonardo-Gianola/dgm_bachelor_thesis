@@ -13,11 +13,16 @@ def main():
     dataset = list(load_dataset(benchmark.dataset_name, split="test"))
     instance_ids = [entry["instance_id"] for entry in dataset]
     expected_instance_ids = load_reference_instance_ids("swe_verified_mini")
-    if instance_ids != expected_instance_ids:
+    if set(instance_ids) != set(expected_instance_ids):
+        missing = set(expected_instance_ids) - set(instance_ids)
+        extra = set(instance_ids) - set(expected_instance_ids)
         raise ValueError(
             "Downloaded dataset instance IDs do not match the pinned mini benchmark IDs.\n"
-            f"Expected {len(expected_instance_ids)} IDs, got {len(instance_ids)}."
+            f"Expected {len(expected_instance_ids)} IDs, got {len(instance_ids)}.\n"
+            f"Missing: {sorted(missing)}\nExtra: {sorted(extra)}"
         )
+    id_order = {iid: i for i, iid in enumerate(expected_instance_ids)}
+    dataset.sort(key=lambda e: id_order[e["instance_id"]])
 
     cache_path = benchmark.dataset_cache_path
     cache_path.parent.mkdir(parents=True, exist_ok=True)
