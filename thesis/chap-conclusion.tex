@@ -1,0 +1,26 @@
+\chapter{Conclusion}
+\label{chap:conclusion}
+
+% TODO: rewrite once results are in.
+
+\section{Summary}
+
+We compared four evaluation schedulers --- baseline, Hyperband, ASHA, and a
+blind GA --- as drop-in replacements for the DGM's default sequential
+evaluation policy on \texttt{swe\_verified\_mini}.
+
+\section{Limitations}
+
+\begin{itemize}
+  \item Each scheduler is run with a single seed and four generations, which
+    bounds the statistical claims we can make about long-horizon evolution.
+  \item Evaluation is confined to a 50-task subset; results may not transfer
+    to the full SWE-bench Verified set.
+  \item All experiments use a single LLM
+    (\texttt{openrouter/minimax/minimax-m2.5}); other models may interact
+    differently with multi-fidelity schedules.
+\end{itemize}
+
+\section{Future Work}
+
+% TODO: directions enabled by the comparison results.

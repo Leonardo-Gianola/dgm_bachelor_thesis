@@ -1,0 +1,58 @@
+\chapter{Introduction}
+\label{chap:introduction}
+
+Large language models (LLMs) have become competent enough at routine
+programming tasks that they are now packaged as autonomous \emph{coding
+agents}: programs that read a task description, browse a code base, edit
+files, run tests, and iterate until the task is solved.  The Darwin
+G{\"o}del Machine (DGM)~\cite{Sakana:25} pushes this idea one step further by
+letting a coding agent \emph{rewrite its own implementation}.  At every
+generation a population of agents proposes modifications to its own source
+code, the modified agents are evaluated on a software engineering benchmark,
+and the most promising variants are kept in an archive that seeds the next
+generation.
+
+\section{Problem}
+
+DGM's evaluation step dominates the wall-clock cost of a run.  Each candidate
+child is executed against a benchmark of real GitHub issues, which is both
+slow (minutes per task) and monetarily expensive (LLM API calls plus
+container time).  Most generated children either fail to compile, regress
+relative to the parent, or change behaviour in ways that are only obvious on
+a subset of the benchmark.  Spending the full evaluation budget on every
+child is therefore wasteful.
+
+\section{Research Question}
+
+\begin{quote}
+  \emph{Can multi-fidelity evaluation schedulers reduce the cost per
+  improvement of the Darwin G{\"o}del Machine without lowering the accuracy
+  of the evolved agents?}
+\end{quote}
+
+To answer this we implement and compare four schedulers --- baseline,
+hyperband~\cite{Li:18}, ASHA~\cite{Li:20}, and a blind genetic
+algorithm --- on \texttt{swe\_verified\_mini}, a 50-task subset of
+SWE-bench Verified~\cite{Jimenez:24}.  All schedulers share the same
+self-improvement loop, model
+(\texttt{openrouter/minimax/minimax-m2.5}), and initial archive.
+
+\section{Contributions}
+
+\begin{itemize}
+  \item An open-source DGM fork with four pluggable schedulers and a
+    fair-comparison harness on \texttt{swe\_verified\_mini}.
+  \item A compile-time argparse guard that rejects self-modifications which
+    remove flags required by the evaluation driver, preventing silent budget
+    burn on broken children.
+  \item % TODO: empirical contribution sentence after Phase 1--3 finish
+\end{itemize}
+
+\section{Outline}
+
+Chapter~\ref{chap:background} reviews the DGM, multi-fidelity scheduling, and
+SWE-bench.  Chapter~\ref{chap:analysis-and-design} describes the experimental
+design and scheduler variants.  Chapter~\ref{chap:implementation} details the
+DGM fork, scheduler implementations, and operational guards.
+Chapter~\ref{chap:results} reports the empirical comparison.
+Chapter~\ref{chap:conclusion} discusses limitations and future work.

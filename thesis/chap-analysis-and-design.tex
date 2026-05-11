@@ -1,0 +1,68 @@
+\chapter{Method}
+\label{chap:analysis-and-design}
+
+This chapter describes the four schedulers under comparison
+(Section~\ref{sec:schedulers}), the fair-comparison protocol used to run them
+(Section~\ref{sec:protocol}), and the metrics reported in
+Chapter~\ref{chap:results} (Section~\ref{sec:metrics}).
+
+\section{Scheduler Variants}
+\label{sec:schedulers}
+
+All four schedulers share the same parent-selection rule, the same initial
+archive, and the same per-child compile and patch-non-empty checks.  They
+differ only in how they allocate the per-generation evaluation budget across
+children.
+
+\paragraph{Baseline.}
+The original DGM evaluation policy.  For each child, the scheduler runs a
+three-stage evaluation pipeline (\texttt{stage\_small} on a few tasks,
+\texttt{stage\_medium} on more tasks, full evaluation on all 50 tasks) and
+promotes the child to the next stage only if it exceeds a score threshold.
+
+\paragraph{Hyperband.}
+Synchronous successive halving with budgets $b = [2, 10, 50]$ tasks and
+reduction factor $\eta = 5$.  All children are evaluated at the smallest
+budget, the top $1/\eta$ are kept and re-evaluated at the next budget, and
+so on.  The scheduler waits for every child in a rung to finish before
+promoting.
+
+\paragraph{ASHA.}
+Asynchronous successive halving with the same $b$, $\eta$, and initial
+population as Hyperband.  A child is promoted to rung $r+1$ as soon as it is
+in the top $1/\eta$ of rung-$r$ completions seen so far, without waiting for
+stragglers.
+
+\paragraph{GA (blind mutation).}
+Genetic algorithm scheduler that reuses the baseline three-stage evaluation
+pipeline but generates children by \emph{blind} high-temperature LLM
+mutations of a tournament-selected parent.  Unlike DGM's
+self-improvement prompt, the GA mutation prompt does not pass error logs or
+diagnostic context, isolating the contribution of stochastic exploration.
+
+\section{Fair-Comparison Protocol}
+\label{sec:protocol}
+
+All four schedulers are run with: \texttt{--benchmark swe\_verified\_mini},
+\texttt{--max\_generation 4}, \texttt{--selfimprove\_size 2},
+\texttt{--seed 0}, and the same initial archive bootstrapped via
+\texttt{test\_swebench.py}.  Hyperband and ASHA additionally use
+\texttt{--hyperband\_eta 5 --hyperband\_budgets 2,10,50
+--hyperband\_initial\_children 10}.  All runs target the same model
+(\texttt{openrouter/minimax/minimax-m2.5}) and the same Docker base image.
+
+\section{Metrics}
+\label{sec:metrics}
+
+For each run we report:
+\begin{itemize}
+  \item \emph{Best child accuracy per generation} on the full 50-task
+    benchmark.
+  \item \emph{Total evaluation tasks consumed} per generation and per run.
+  \item \emph{Compile-rate} and \emph{archive growth} per generation.
+  \item \emph{Wall-clock time} and \emph{API spend} (USD) per generation.
+  \item \emph{Cost-per-percentage-point of improvement} relative to the
+    initial archive --- the primary efficiency metric.
+\end{itemize}
+
+% TODO: state significance protocol once multi-seed phase 3 is run

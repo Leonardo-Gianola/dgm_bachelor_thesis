@@ -1,0 +1,67 @@
+\chapter{Implementation}
+\label{chap:implementation}
+
+The thesis builds on a fork of the public DGM
+codebase.\footnote{TODO: cite original DGM repository URL.}
+This chapter documents the additions (Section~\ref{sec:fork}), the scheduler
+implementations (Section~\ref{sec:scheduler-impl}), and the operational
+guards that keep long runs robust (Section~\ref{sec:guards}).
+
+\section{Fork Additions}
+\label{sec:fork}
+
+The relevant files in the fork are summarized in
+Table~\ref{tab:fork-files}.
+
+\begin{table}[tb]
+  \centering
+  \begin{tabular}{l l}
+    File & Purpose \\\hline
+    \texttt{DGM\_outer.py}          & Main entry point, evolution loop \\
+    \texttt{schedulers.py}          & Baseline, Hyperband, ASHA, GA classes \\
+    \texttt{self\_improve\_step.py} & Child generation and evaluation \\
+    \texttt{coding\_agent.py}       & Initial coding agent \\
+    \texttt{benchmarks/config.py}   & Benchmark registry, mini-subset loader \\
+    \texttt{experiments/}           & Experiment runner and result aggregator \\
+  \end{tabular}
+  \caption{Key files in the DGM fork.}
+  \label{tab:fork-files}
+\end{table}
+
+\section{Scheduler Implementations}
+\label{sec:scheduler-impl}
+
+All four schedulers derive from a common \texttt{BaseScheduler} that owns
+the per-generation budget bookkeeping.  Each subclass overrides
+\texttt{run\_generation} with its own promotion logic.
+
+% TODO: short subsection per scheduler with the key promotion rule and a
+% pseudo-code listing.
+
+\section{Operational Guards}
+\label{sec:guards}
+
+Long DGM runs are sensitive to a class of silent failures in which a child
+agent fails to evaluate but still consumes its full budget.  We add three
+guards to keep these from polluting the comparison.
+
+\paragraph{Argparse guard.}
+The eval harness invokes the modified \texttt{coding\_agent.py} with a fixed
+set of command-line flags
+(\texttt{--problem\_statement}, \texttt{--git\_dir}, \texttt{--chat\_history\_file},
+\texttt{--base\_commit}, \texttt{--outdir}, \texttt{--test\_description},
+\texttt{--self\_improve}, and either \texttt{--instance\_id} for SWE or
+\texttt{--language} for polyglot).  If the LLM-proposed patch removes or
+renames any of these flags, every per-task invocation exits with code 2 and
+the child silently burns its budget.  After applying the patch we run
+\texttt{python /dgm/coding\_agent.py --help} inside the container and verify
+that the expected flag names appear in the help text; otherwise the child
+is marked \texttt{model\_patch\_notempty=False} with an explicit
+\texttt{compile\_failure\_reason} and skipped.
+
+\paragraph{Empty-patch retry.}
+Children that produce an empty patch on the first attempt are retried once
+at a higher LLM temperature before being discarded.
+
+\paragraph{Docker startup retry and per-image build lock.}
+% TODO: short paragraph on the docker fixes from the recent commits.

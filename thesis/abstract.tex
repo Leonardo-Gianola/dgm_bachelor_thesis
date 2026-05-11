@@ -1,0 +1,17 @@
+% abstract / resume
+\begin{abstract}
+  The Darwin G{\"o}del Machine (DGM) is an evolutionary framework in which a
+  population of coding agents repeatedly self-modifies, evaluates the resulting
+  children on a software engineering benchmark, and keeps the most promising
+  variants in an archive.  Each generation spends most of its compute budget on
+  evaluating children that ultimately fail to improve the parent.  This thesis
+  investigates whether \emph{multi-fidelity evaluation schedulers} can reduce
+  wasted compute without sacrificing the final accuracy of the evolved agents.
+
+  We extend the DGM with four schedulers --- a sequential \texttt{baseline},
+  synchronous \texttt{hyperband}, asynchronous \texttt{asha}, and a blind
+  high-temperature genetic algorithm \texttt{ga} --- and compare them on a
+  fixed subset of SWE-bench Verified (\texttt{swe\_verified\_mini}, 50 tasks)
+  using the same self-improvement budget, model, and initial archive.
+  % TODO: state main results once experiments complete
+\end{abstract}

@@ -1,0 +1,62 @@
+\chapter{Background}
+\label{chap:background}
+
+This chapter introduces the three building blocks the thesis combines: the
+Darwin G{\"o}del Machine (Section~\ref{sec:dgm}), multi-fidelity evaluation
+schedulers (Section~\ref{sec:multifidelity}), and the SWE-bench evaluation
+suite (Section~\ref{sec:swebench}).
+
+\section{The Darwin G{\"o}del Machine}
+\label{sec:dgm}
+
+The Darwin G{\"o}del Machine~\cite{Sakana:25} is an evolutionary
+self-improvement loop over coding agents.  An \emph{agent} is a directory
+containing the Python source of an LLM-driven program that, given a problem
+statement and a Git repository, attempts to produce a patch that solves the
+problem.  Each generation proceeds in three phases:
+%
+\begin{enumerate}
+  \item \textbf{Parent selection.}  A scoring rule picks parents from the
+    archive of previously-kept agents.
+  \item \textbf{Child generation.}  Each parent is asked to propose a
+    modification to its own source code; the modified code becomes a
+    \emph{child}.
+  \item \textbf{Child evaluation.}  Each child is run against the benchmark.
+    Children that pass quality and compile checks are added to the archive.
+\end{enumerate}
+%
+The archive seeds the next generation, so improvements compound across
+generations.
+
+% TODO: cite original DGM paper formally, expand on archive policy and target
+% selection (`score_child_prop`, contextlength targeting, etc.)
+
+\section{Multi-Fidelity Evaluation}
+\label{sec:multifidelity}
+
+Multi-fidelity methods exploit the observation that cheap, partial
+evaluations are often informative enough to discard the worst candidates
+before paying for the full evaluation.  Successive halving runs all
+candidates at a small budget, keeps the top $1/\eta$ fraction, and re-runs
+them at a larger budget; the process repeats until one budget level
+remains.  Hyperband~\cite{Li:18} composes successive halving over several
+bracket sizes to balance exploration and exploitation.  ASHA~\cite{Li:20} is
+an asynchronous variant in which a candidate is promoted to the next rung as
+soon as it ranks in the top $1/\eta$ of the candidates that have completed
+the current rung, eliminating the synchronous straggler problem.
+
+In this thesis the candidates are children of a DGM generation and the
+fidelities are the number of benchmark tasks each child is evaluated on.
+
+\section{SWE-bench and \texttt{swe\_verified\_mini}}
+\label{sec:swebench}
+
+SWE-bench~\cite{Jimenez:24} is a benchmark of real GitHub issues from
+popular Python projects.  Each task provides a problem statement, a base
+commit, and a hidden set of tests that the agent's patch must make pass.
+SWE-bench~Verified is a human-validated 500-task subset; we use a 50-task
+sub-subset, \texttt{swe\_verified\_mini}, which is small enough to run
+multiple full generations within the thesis budget while preserving the
+distribution of task difficulties.
+
+% TODO: describe per-task evaluation pipeline (Docker, conda envs, report.py)
