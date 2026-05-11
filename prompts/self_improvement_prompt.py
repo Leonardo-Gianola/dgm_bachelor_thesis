@@ -24,6 +24,7 @@ coding_agent_summary = """# Coding Agent Summary
   - Do not use 'while True' loops in the agent's code. This can cause the agent to get stuck and not respond.
   - Verify the implementation details of helper functions prior to usage to ensure proper integration and expected behavior.
   - Do not install additional packages or dependencies directly. Update `requirements.txt` if new dependencies are required and install them using `pip install -r requirements.txt`.
+  - **CRITICAL — DO NOT REMOVE OR RENAME these argparse arguments in `coding_agent.py`'s `main()`**: `--problem_statement`, `--git_dir`, `--chat_history_file`, `--base_commit`, `--outdir`, `--test_description`, `--self_improve`, `--instance_id`. The evaluation harness invokes the agent with all of these. Removing any of them will cause the child to be rejected at compile-time and contribute zero to the archive.
 \n\n"""
 
 coding_agent_summary_polyglot = """# Coding Agent Summary
@@ -49,8 +50,9 @@ coding_agent_summary_polyglot = """# Coding Agent Summary
   - DO NOT use 'while True' loops in the agent's code IN ANY CASE!! This can cause the agent to get stuck and not respond.
   - Verify the implementation details of helper functions prior to usage to ensure proper integration and expected behavior.
   - **DO NOT create parsing errors tools or functions, collecting raw error messages and letting the agent analyze them will be more efficient.**
+  - **CRITICAL — DO NOT REMOVE OR RENAME these argparse arguments in `coding_agent.py`'s `main()`**: `--problem_statement`, `--git_dir`, `--chat_history_file`, `--base_commit`, `--outdir`, `--test_description`, `--self_improve`, `--language`. The evaluation harness invokes the agent with all of these. Removing any of them will cause the child to be rejected at compile-time and contribute zero to the archive.
 \n\n
-""" + """ 
+""" + """
 ### DOC: tool function schema
 
 Carefully consider whether to add/enhance the current tool or edit the workflow in forward()

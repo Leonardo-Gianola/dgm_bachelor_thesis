@@ -551,9 +551,43 @@ def generate_child_patch(
             return metadata
 
         metadata['model_patch_exists'] = True
-        metadata['model_patch_notempty'] = True
         metadata['token_usage'] = _load_token_usage(token_usage_file)
         metadata['token_usage_total'] = _extract_total_tokens(metadata['token_usage'])
+
+        # Argparse guard: ensure the modified /dgm/coding_agent.py still accepts
+        # every CLI flag that eval drivers pass. If the LLM removed/renamed any
+        # required arg, mark this child as failed-compile so it skips eval and
+        # doesn't burn budget on argparse-exit-2 task runs.
+        guard_required_flags = [
+            "--problem_statement", "--git_dir", "--chat_history_file",
+            "--base_commit", "--outdir", "--test_description", "--self_improve",
+        ]
+        if benchmark.kind == "polyglot":
+            guard_required_flags.append("--language")
+        else:
+            guard_required_flags.append("--instance_id")
+        help_result = container.exec_run(
+            ["timeout", "30", "python", "/dgm/coding_agent.py", "--help"],
+            workdir='/',
+        )
+        guard_failure_reason = None
+        if help_result.exit_code != 0:
+            tail = help_result.output.decode('utf-8', errors='replace')[-400:]
+            guard_failure_reason = f"argparse_help_exit_{help_result.exit_code}: {tail}"
+        else:
+            help_text = help_result.output.decode('utf-8', errors='replace')
+            missing = [f for f in guard_required_flags if f not in help_text]
+            if missing:
+                guard_failure_reason = f"argparse_missing_flags: {missing}"
+        if guard_failure_reason is not None:
+            safe_log(f"Argparse guard FAILED: {guard_failure_reason}")
+            metadata['model_patch_notempty'] = False
+            metadata['compile_failure_reason'] = guard_failure_reason
+            metadata['budget_history'] = []
+            save_metadata(metadata, child_output_dir)
+            return metadata
+
+        metadata['model_patch_notempty'] = True
         metadata['budget_history'] = []
         save_metadata(metadata, child_output_dir)
         return metadata

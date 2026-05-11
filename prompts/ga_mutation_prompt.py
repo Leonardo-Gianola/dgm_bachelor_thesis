@@ -27,7 +27,13 @@ or unconventional direction — a "blind" perturbation that could serendipitousl
 coding ability.
 Be creative and bold: consider unusual tool designs, novel prompting strategies, alternative workflow \
 architectures, or unexpected heuristics. The mutation must still be a coherent code change; it should \
-not break the agent's ability to run."""
+not break the agent's ability to run.
+
+**HARD CONSTRAINT — DO NOT REMOVE OR RENAME these argparse arguments in `coding_agent.py`'s `main()`**: \
+`--problem_statement`, `--git_dir`, `--chat_history_file`, `--base_commit`, `--outdir`, \
+`--test_description`, `--self_improve`, `--instance_id` (SWE) / `--language` (polyglot). The evaluation \
+harness invokes the agent with all of these. Mutations that remove any of them will be rejected at \
+compile-time and contribute nothing — explore other surfaces (tools, prompts, workflow) instead."""
 
 GA_MUTATION_PROMPT = """Propose ONE creative, exploratory mutation to the coding agent.
 
