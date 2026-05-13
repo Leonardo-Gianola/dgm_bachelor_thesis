@@ -1,0 +1,233 @@
+{
+  "scheduler": "ga",
+  "run_id": "20260513093044_666042",
+  "started_at": "2026-05-13T09:30:44+02:00",
+  "ended_at": "2026-05-13T19:08:33+02:00",
+  "wall_clock_hours_total": 9.63,
+  "actual_cost_usd": 26.0,
+  "config": {
+    "max_generation": 4,
+    "selfimprove_size": 2,
+    "selfimprove_workers": 2,
+    "seed": 0,
+    "benchmark": "swe_verified_mini",
+    "generation_task_budget_total": 100,
+    "ga_tournament_k": 3,
+    "ga_mutation_temperature": 1.0,
+    "scheduler": "ga",
+    "model": "openrouter/minimax/minimax-m2.5"
+  },
+  "host": {
+    "os": "Fedora 44",
+    "python": "3.14",
+    "openrouter_pricing": {
+      "input_usd_per_million": 0.15,
+      "output_usd_per_million": 1.15
+    }
+  },
+  "initial": {
+    "rate": 0.3404255319148936,
+    "resolved": 16,
+    "submitted": 47
+  },
+  "generations": [
+    {
+      "gen": 0,
+      "wall_clock_seconds": 1726.68,
+      "children_generated": 2,
+      "children_compiled": 1,
+      "children_fully_evaluated": 0,
+      "archive_candidates": [
+        "20260513_093044_671020"
+      ],
+      "archive_size_after": 2,
+      "evaluation_budget_tasks_consumed": 6,
+      "best_child_score": 1.0,
+      "avg_child_score": 0.5,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 3,
+          "tasks_added": 3,
+          "num_candidates_in": 2,
+          "num_promoted": 0,
+          "num_killed": 2
+        },
+        {
+          "rung": 1,
+          "budget_size": 15,
+          "tasks_added": 12,
+          "num_candidates_in": 0,
+          "num_promoted": 0,
+          "num_killed": 0
+        }
+      ]
+    },
+    {
+      "gen": 1,
+      "wall_clock_seconds": 0.0,
+      "children_generated": 0,
+      "children_compiled": 0,
+      "children_fully_evaluated": 0,
+      "archive_candidates": [],
+      "archive_size_after": 2,
+      "evaluation_budget_tasks_consumed": 0,
+      "best_child_score": 0.0,
+      "avg_child_score": 0.0,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 3,
+          "tasks_added": 3,
+          "num_candidates_in": 0,
+          "num_promoted": 0,
+          "num_killed": 0
+        },
+        {
+          "rung": 1,
+          "budget_size": 15,
+          "tasks_added": 12,
+          "num_candidates_in": 0,
+          "num_promoted": 0,
+          "num_killed": 0
+        }
+      ],
+      "skipped": true,
+      "skip_reason": "choose_selfimproves returned empty list. Both sampled parents had empty unresolved_ids (20260513_093044_671020 was killed at rung 0 with only 1 task submitted) AND all three 25% random rolls (solve_empty_patches, solve_stochasticity, solve_contextlength) missed. See DGM_outer.py:165 — silent `continue` when unresolved_ids is empty."
+    },
+    {
+      "gen": 2,
+      "wall_clock_seconds": 15635.95,
+      "children_generated": 2,
+      "children_compiled": 1,
+      "children_fully_evaluated": 0,
+      "archive_candidates": [
+        "20260513_095931_355150"
+      ],
+      "archive_size_after": 3,
+      "evaluation_budget_tasks_consumed": 53,
+      "best_child_score": 0.75,
+      "avg_child_score": 0.375,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 3,
+          "tasks_added": 3,
+          "num_candidates_in": 2,
+          "num_promoted": 1,
+          "num_killed": 1
+        },
+        {
+          "rung": 1,
+          "budget_size": 15,
+          "tasks_added": 12,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 35,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        }
+      ]
+    },
+    {
+      "gen": 3,
+      "wall_clock_seconds": 17305.91,
+      "children_generated": 1,
+      "children_compiled": 1,
+      "children_fully_evaluated": 1,
+      "archive_candidates": [
+        "20260513_142007_309717"
+      ],
+      "archive_size_after": 4,
+      "evaluation_budget_tasks_consumed": 50,
+      "best_child_score": 0.72,
+      "avg_child_score": 0.72,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 3,
+          "tasks_added": 3,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        },
+        {
+          "rung": 1,
+          "budget_size": 15,
+          "tasks_added": 12,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 35,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        }
+      ],
+      "partial_skip": true,
+      "partial_skip_reason": "selfimprove_size=2 but only 1 entry generated. Second parent slot hit same empty-unresolved + all-dice-miss path as gen 1."
+    }
+  ],
+  "archive": [
+    {
+      "run_id": "initial",
+      "rate": 0.3404255319148936,
+      "resolved": 16,
+      "submitted": 47
+    },
+    {
+      "run_id": "20260513_093044_671020",
+      "parent_commit": "initial",
+      "entry": "sphinx-doc__sphinx-9281",
+      "rate": 1.0,
+      "resolved": 1,
+      "submitted": 1,
+      "evaluated_task_count": 1,
+      "promotion_decision": "killed",
+      "final_rung": 0,
+      "note": "Killed at rung 0 (stage_small). 1 submitted patch resolved out of 3 tasks; 2 empty patches excluded from denominator. Rate=1.0 is single-task fluke — empty-patch denominator filter. This archive member polluted selection in gen 1 (skipped) and gen 3 (partial)."
+    },
+    {
+      "run_id": "20260513_095931_355150",
+      "parent_commit": "20260513_093044_671020",
+      "entry": "solve_stochasticity",
+      "rate": 0.6896551724137931,
+      "resolved": 20,
+      "submitted": 29,
+      "evaluated_task_count": 29,
+      "promotion_decision": "promoted",
+      "final_rung": 2
+    },
+    {
+      "run_id": "20260513_142007_309717",
+      "parent_commit": "20260513_095931_355150",
+      "entry": "sphinx-doc__sphinx-8269",
+      "rate": 0.7058823529411765,
+      "resolved": 24,
+      "submitted": 34,
+      "evaluated_task_count": 34,
+      "promotion_decision": "promoted",
+      "final_rung": 2,
+      "note": "Best child in archive. Initial → Best: +36.55pp absolute, +107% relative (34.04% → 70.59%). Full 50-task rung-2 eval: 24 resolved, 10 unresolved, 16 incomplete (agent timeouts excluded from denominator)."
+    }
+  ],
+  "notes": [
+    "accuracy_score = resolved_instances / submitted_instances. Empty patches NOT in denominator — model-specific failure mode of minimax-m2.5. See metric_flaw_empty_patches.md.",
+    "Archive numbers (resolved/submitted/evaluated_task_count) come from each child's final-rung file (e.g. *_stage_full_0.json), not metadata.json's overall_performance which sums cumulative rung submissions.",
+    "GA uses blind high-temperature mutation (no error-log context). Selection method: score_child_prop (sigmoid-weighted by score × 1/(1+children_count)). Tournament parameters --ga_tournament_k=3 only used if --choose_selfimproves_method tournament passed; default here was score_child_prop.",
+    "Gen 1 silently skipped — DGM_outer.py:165 returns empty entries when sampled parent has no unresolved_ids and all three 25% special-entry rolls miss. Polluting archive member: 20260513_093044_671020 (rate=1.0 from 1 task).",
+    "Gen 3 partially skipped — only 1 of 2 parent slots produced an entry, same root cause. Effective gens: 2/4 productive.",
+    "Compile rate 60% (3/5 children): 2 children failed compile-time guards (likely argparse contract enforced by commit 4dbdf02).",
+    "Cost $26 actual. Tasks consumed total: 109. Patch-gen LLM tokens contribute small share; bulk is SWE-bench eval compute."
+  ]
+}
