@@ -12,7 +12,8 @@ from utils.common_utils import load_json_file
 from utils.evo_utils import is_compiled_self_improve
 
 
-GENERATION_TIMEOUT_SECONDS = 1.5 * 60 * 60
+GENERATION_TIMEOUT_SECONDS = 1.5 * 60 * 60  # patch-generation phase only
+ASHA_GENERATION_EVAL_TIMEOUT_SECONDS = 36 * 60 * 60  # ASHA async eval loop (rungs 0..N)
 
 
 def _load_child_metadata(output_dir, run_id):
@@ -564,7 +565,7 @@ class ASHAScheduler(BaseScheduler):
         # Submit all children for rung 0
         pending = {submit_eval(run_id, 0) for run_id in children}
 
-        deadline = time.monotonic() + GENERATION_TIMEOUT_SECONDS
+        deadline = time.monotonic() + ASHA_GENERATION_EVAL_TIMEOUT_SECONDS
         try:
             while pending:
                 remaining = deadline - time.monotonic()
