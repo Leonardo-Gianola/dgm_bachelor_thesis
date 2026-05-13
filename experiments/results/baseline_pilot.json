@@ -1,0 +1,278 @@
+{
+  "scheduler": "baseline",
+  "run_id": "20260505004943_827754",
+  "started_at": "2026-05-05T00:49:43+02:00",
+  "ended_at": "2026-05-05T10:48:32+02:00",
+  "wall_clock_hours_total": 9.98,
+  "actual_cost_usd": 32.47,
+  "config": {
+    "max_generation": 4,
+    "selfimprove_size": 2,
+    "selfimprove_workers": 2,
+    "seed": 0,
+    "benchmark": "swe_verified_mini",
+    "generation_task_budget_total": 100,
+    "scheduler": "baseline",
+    "model": "openrouter/minimax/minimax-m2.5"
+  },
+  "host": {
+    "os": "Fedora 44 (post WSL migration 2026-05-04)",
+    "python": "3.14",
+    "openrouter_pricing": {
+      "input_usd_per_million": 0.15,
+      "output_usd_per_million": 1.15
+    }
+  },
+  "initial": {
+    "rate": 0.3404255319148936,
+    "resolved": 16,
+    "submitted": 47
+  },
+  "generations": [
+    {
+      "gen": 0,
+      "wall_clock_seconds": 11728.55,
+      "children_generated": 2,
+      "children_compiled": 2,
+      "children_fully_evaluated": 1,
+      "archive_candidates": [
+        "20260505_004943_832695",
+        "20260505_004943_832659"
+      ],
+      "archive_size_after": 3,
+      "evaluation_budget_tasks_consumed": 53,
+      "best_child_score": 1.0,
+      "avg_child_score": 0.7647058823529411,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 3,
+          "tasks_added": 3,
+          "num_candidates_in": 2,
+          "num_promoted": 1,
+          "num_killed": 1
+        },
+        {
+          "rung": 1,
+          "budget_size": 15,
+          "tasks_added": 12,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 35,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        }
+      ]
+    },
+    {
+      "gen": 1,
+      "wall_clock_seconds": 6840.93,
+      "children_generated": 1,
+      "children_compiled": 1,
+      "children_fully_evaluated": 1,
+      "archive_candidates": [
+        "20260505_040512_396618"
+      ],
+      "archive_size_after": 4,
+      "evaluation_budget_tasks_consumed": 50,
+      "best_child_score": 0.576,
+      "avg_child_score": 0.576,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 3,
+          "tasks_added": 3,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        },
+        {
+          "rung": 1,
+          "budget_size": 15,
+          "tasks_added": 12,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 35,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        }
+      ]
+    },
+    {
+      "gen": 2,
+      "wall_clock_seconds": 8240.96,
+      "children_generated": 2,
+      "children_compiled": 2,
+      "children_fully_evaluated": 2,
+      "archive_candidates": [
+        "20260505_055913_315290",
+        "20260505_055913_316421"
+      ],
+      "archive_size_after": 6,
+      "evaluation_budget_tasks_consumed": 100,
+      "best_child_score": 0.562,
+      "avg_child_score": 0.519,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 3,
+          "tasks_added": 3,
+          "num_candidates_in": 2,
+          "num_promoted": 2,
+          "num_killed": 0
+        },
+        {
+          "rung": 1,
+          "budget_size": 15,
+          "tasks_added": 12,
+          "num_candidates_in": 2,
+          "num_promoted": 2,
+          "num_killed": 0
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 35,
+          "num_candidates_in": 2,
+          "num_promoted": 2,
+          "num_killed": 0
+        }
+      ]
+    },
+    {
+      "gen": 3,
+      "wall_clock_seconds": 9118.00,
+      "children_generated": 1,
+      "children_compiled": 1,
+      "children_fully_evaluated": 1,
+      "archive_candidates": [
+        "20260505_081634_345239"
+      ],
+      "archive_size_after": 7,
+      "evaluation_budget_tasks_consumed": 50,
+      "best_child_score": 0.625,
+      "avg_child_score": 0.625,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 3,
+          "tasks_added": 3,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        },
+        {
+          "rung": 1,
+          "budget_size": 15,
+          "tasks_added": 12,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 35,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        }
+      ]
+    }
+  ],
+  "archive": [
+    {
+      "run_id": "initial",
+      "rate": 0.3404255319148936,
+      "resolved": 16,
+      "submitted": 47
+    },
+    {
+      "run_id": "20260505_004943_832659",
+      "parent_commit": "initial",
+      "entry": "sphinx-doc__sphinx-8269",
+      "rate": 0.5,
+      "resolved": 25,
+      "submitted": 50,
+      "evaluated_task_count": 50,
+      "promotion_decision": "promoted",
+      "final_rung": 2
+    },
+    {
+      "run_id": "20260505_004943_832695",
+      "parent_commit": "initial",
+      "entry": "sphinx-doc__sphinx-9281",
+      "rate": 1.0,
+      "resolved": 1,
+      "submitted": 1,
+      "evaluated_task_count": 1,
+      "promotion_decision": "killed",
+      "final_rung": 0,
+      "note": "Killed at rung 0 (stage_small). Single submitted patch resolved — rate inflated by tiny n. Empty-patch denominator filter."
+    },
+    {
+      "run_id": "20260505_040512_396618",
+      "parent_commit": "20260505_004943_832659",
+      "entry": "sphinx-doc__sphinx-7748",
+      "rate": 0.5416666666666666,
+      "resolved": 26,
+      "submitted": 48,
+      "evaluated_task_count": 48,
+      "promotion_decision": "promoted",
+      "final_rung": 2
+    },
+    {
+      "run_id": "20260505_055913_315290",
+      "parent_commit": "20260505_040512_396618",
+      "entry": "solve_stochasticity",
+      "rate": 0.5416666666666666,
+      "resolved": 26,
+      "submitted": 48,
+      "evaluated_task_count": 48,
+      "promotion_decision": "promoted",
+      "final_rung": 2
+    },
+    {
+      "run_id": "20260505_055913_316421",
+      "parent_commit": "20260505_040512_396618",
+      "entry": "solve_stochasticity",
+      "rate": 0.45652173913043476,
+      "resolved": 21,
+      "submitted": 46,
+      "evaluated_task_count": 46,
+      "promotion_decision": "promoted",
+      "final_rung": 2
+    },
+    {
+      "run_id": "20260505_081634_345239",
+      "parent_commit": "20260505_040512_396618",
+      "entry": "sphinx-doc__sphinx-8475",
+      "rate": 0.5957446808510638,
+      "resolved": 28,
+      "submitted": 47,
+      "evaluated_task_count": 47,
+      "promotion_decision": "promoted",
+      "final_rung": 2,
+      "note": "Best child in archive. Initial → Best: +25.53pp absolute, +75% relative (34.04% → 59.57%)."
+    }
+  ],
+  "notes": [
+    "accuracy_score = resolved_instances / submitted_instances. Empty patches NOT in denominator — model-specific failure mode of minimax-m2.5 exposed metric weakness. See metric_flaw_empty_patches.md.",
+    "Archive numbers (resolved/submitted/evaluated_task_count) come from each child's final-rung file (e.g. *_stage_full_0.json), not metadata.json's overall_performance which sums cumulative rung submissions and double-counts.",
+    "RESULTS.md in the run dir (output_dgm/20260505004943_827754/RESULTS.md) is the original human-authored summary; this JSON is the structured mirror for thesis aggregation.",
+    "All 6 children entered archive under --update_archive keep_all default. Child 20260505_004943_832695 was killed at rung 0 but still recorded as archive candidate.",
+    "Gen 0 Child B (20260505_004943_832695) burned half of gen 0 compute on a losing branch — documented failure mode of synchronous baseline scheduler with selfimprove_size=2."
+  ]
+}
