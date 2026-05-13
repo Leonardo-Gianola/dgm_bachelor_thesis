@@ -1,0 +1,249 @@
+{
+  "scheduler": "hyperband",
+  "run_id": "20260511231317_229925",
+  "started_at": "2026-05-11T23:13:17+02:00",
+  "ended_at": "2026-05-13T05:14:42+02:00",
+  "wall_clock_hours_total": 30.0,
+  "actual_cost_usd": 44.98,
+  "config": {
+    "max_generation": 4,
+    "selfimprove_size": 2,
+    "selfimprove_workers": 2,
+    "seed": 0,
+    "benchmark": "swe_verified_mini",
+    "generation_task_budget_total": 100,
+    "hyperband_eta": 5,
+    "hyperband_budgets": [
+      2,
+      10,
+      50
+    ],
+    "hyperband_initial_children": 15,
+    "scheduler": "hyperband",
+    "model": "openrouter/minimax/minimax-m2.5"
+  },
+  "host": {
+    "os": "Fedora 44",
+    "python": "3.14",
+    "openrouter_pricing": {
+      "input_usd_per_million": 0.15,
+      "output_usd_per_million": 1.15
+    }
+  },
+  "initial": {
+    "rate": 0.3404255319148936,
+    "resolved": 16,
+    "submitted": 47
+  },
+  "generations": [
+    {
+      "gen": 0,
+      "wall_clock_seconds": 22472.010929346085,
+      "children_generated": 15,
+      "children_compiled": 11,
+      "children_fully_evaluated": 1,
+      "archive_candidates": [
+        "20260511_235216_700212"
+      ],
+      "archive_size_after": 2,
+      "evaluation_budget_tasks_consumed": 94,
+      "best_child_score": 0.75,
+      "avg_child_score": 0.38950617283950617,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 2,
+          "tasks_added": 2,
+          "num_candidates_in": 15,
+          "num_promoted": 3,
+          "num_killed": 12
+        },
+        {
+          "rung": 1,
+          "budget_size": 10,
+          "tasks_added": 8,
+          "num_candidates_in": 3,
+          "num_promoted": 1,
+          "num_killed": 2
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 40,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        }
+      ]
+    },
+    {
+      "gen": 1,
+      "wall_clock_seconds": 29247.22187280655,
+      "children_generated": 15,
+      "children_compiled": 12,
+      "children_fully_evaluated": 0,
+      "archive_candidates": [
+        "20260512_060427_158796"
+      ],
+      "archive_size_after": 3,
+      "evaluation_budget_tasks_consumed": 94,
+      "best_child_score": 1.0,
+      "avg_child_score": 0.710952380952381,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 2,
+          "tasks_added": 2,
+          "num_candidates_in": 15,
+          "num_promoted": 3,
+          "num_killed": 12
+        },
+        {
+          "rung": 1,
+          "budget_size": 10,
+          "tasks_added": 8,
+          "num_candidates_in": 3,
+          "num_promoted": 1,
+          "num_killed": 2
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 40,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        }
+      ]
+    },
+    {
+      "gen": 2,
+      "wall_clock_seconds": 28586.581712961197,
+      "children_generated": 14,
+      "children_compiled": 7,
+      "children_fully_evaluated": 0,
+      "archive_candidates": [
+        "20260512_141320_329009"
+      ],
+      "archive_size_after": 4,
+      "evaluation_budget_tasks_consumed": 92,
+      "best_child_score": 1.0,
+      "avg_child_score": 0.4261489479512735,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 2,
+          "tasks_added": 2,
+          "num_candidates_in": 14,
+          "num_promoted": 3,
+          "num_killed": 11
+        },
+        {
+          "rung": 1,
+          "budget_size": 10,
+          "tasks_added": 8,
+          "num_candidates_in": 3,
+          "num_promoted": 1,
+          "num_killed": 2
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 40,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        }
+      ]
+    },
+    {
+      "gen": 3,
+      "wall_clock_seconds": 27779.643020153046,
+      "children_generated": 10,
+      "children_compiled": 8,
+      "children_fully_evaluated": 0,
+      "archive_candidates": [
+        "20260512_214141_888600"
+      ],
+      "archive_size_after": 5,
+      "evaluation_budget_tasks_consumed": 76,
+      "best_child_score": 1.0,
+      "avg_child_score": 0.7258620689655173,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 2,
+          "tasks_added": 2,
+          "num_candidates_in": 10,
+          "num_promoted": 2,
+          "num_killed": 8
+        },
+        {
+          "rung": 1,
+          "budget_size": 10,
+          "tasks_added": 8,
+          "num_candidates_in": 2,
+          "num_promoted": 1,
+          "num_killed": 1
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 40,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        }
+      ]
+    }
+  ],
+  "archive": [
+    {
+      "run_id": "initial",
+      "rate": 0.3404255319148936,
+      "resolved": 16,
+      "submitted": 47
+    },
+    {
+      "run_id": "20260511_235216_700212",
+      "parent_commit": "initial",
+      "entry": "sphinx-doc__sphinx-8035",
+      "rate": 0.5925925925925926,
+      "resolved": 32,
+      "submitted": 54,
+      "evaluated_task_count": 54
+    },
+    {
+      "run_id": "20260512_060427_158796",
+      "parent_commit": "initial",
+      "entry": "solve_empty_patches",
+      "rate": 0.7,
+      "resolved": 14,
+      "submitted": 20,
+      "evaluated_task_count": 20
+    },
+    {
+      "run_id": "20260512_141320_329009",
+      "parent_commit": "20260511_235216_700212",
+      "entry": "solve_stochasticity",
+      "rate": 0.6744186046511628,
+      "resolved": 29,
+      "submitted": 43,
+      "evaluated_task_count": 43
+    },
+    {
+      "run_id": "20260512_214141_888600",
+      "parent_commit": "20260512_060427_158796",
+      "entry": "django__django-12308",
+      "rate": 0.7586206896551724,
+      "resolved": 22,
+      "submitted": 29,
+      "evaluated_task_count": 29
+    }
+  ],
+  "notes": [
+    "accuracy_score = resolved_instances / submitted_instances. Empty patches NOT in denominator \u2014 model-specific failure mode of minimax-m2.5 exposed metric weakness. See metric_flaw_empty_patches.md.",
+    "Per-rung scores in metadata sum cumulative submissions (rung-1 file re-evaluates rung-0 preds); total_submitted_instances double-counts. Use final-rung file for true unique-eval rate.",
+    "Inherited counting from upstream DGM/Sakana (utils/evo_utils.py:get_all_performance); not a thesis-introduced bug."
+  ]
+}
