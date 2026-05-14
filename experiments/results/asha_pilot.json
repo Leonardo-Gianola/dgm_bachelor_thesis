@@ -1,0 +1,267 @@
+{
+  "scheduler": "asha",
+  "run_id": "20260513201108_583607",
+  "started_at": "2026-05-13T20:11:08+02:00",
+  "ended_at": "2026-05-14T16:31:00+02:00",
+  "wall_clock_hours_total": 20.34,
+  "actual_cost_usd": 39.0,
+  "config": {
+    "max_generation": 4,
+    "selfimprove_size": 2,
+    "selfimprove_workers": 2,
+    "seed": 0,
+    "benchmark": "swe_verified_mini",
+    "generation_task_budget_total": 100,
+    "hyperband_eta": 5,
+    "hyperband_budgets": [
+      2,
+      10,
+      50
+    ],
+    "hyperband_initial_children": 15,
+    "scheduler": "asha",
+    "model": "openrouter/minimax/minimax-m2.5"
+  },
+  "host": {
+    "os": "Fedora 44",
+    "python": "3.14",
+    "openrouter_pricing": {
+      "input_usd_per_million": 0.15,
+      "output_usd_per_million": 1.15
+    }
+  },
+  "initial": {
+    "rate": 0.3404255319148936,
+    "resolved": 16,
+    "submitted": 47
+  },
+  "generations": [
+    {
+      "gen": 0,
+      "wall_clock_seconds": 24121.0,
+      "children_generated": 15,
+      "children_compiled": 12,
+      "children_fully_evaluated": 0,
+      "archive_candidates": [
+        "20260513_201108_588422"
+      ],
+      "archive_size_after": 2,
+      "evaluation_budget_tasks_consumed": 88,
+      "best_child_score": 1.0,
+      "avg_child_score": 0.489,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 2,
+          "tasks_added": 2,
+          "num_candidates_in": 12,
+          "num_promoted": 3,
+          "num_killed": 9
+        },
+        {
+          "rung": 1,
+          "budget_size": 10,
+          "tasks_added": 8,
+          "num_candidates_in": 3,
+          "num_promoted": 1,
+          "num_killed": 2
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 40,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        }
+      ]
+    },
+    {
+      "gen": 1,
+      "wall_clock_seconds": 16121.0,
+      "children_generated": 15,
+      "children_compiled": 11,
+      "children_fully_evaluated": 1,
+      "archive_candidates": [
+        "20260514_025310_957460"
+      ],
+      "archive_size_after": 3,
+      "evaluation_budget_tasks_consumed": 86,
+      "best_child_score": 1.0,
+      "avg_child_score": 0.652,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 2,
+          "tasks_added": 2,
+          "num_candidates_in": 11,
+          "num_promoted": 3,
+          "num_killed": 8
+        },
+        {
+          "rung": 1,
+          "budget_size": 10,
+          "tasks_added": 8,
+          "num_candidates_in": 3,
+          "num_promoted": 1,
+          "num_killed": 2
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 40,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        }
+      ]
+    },
+    {
+      "gen": 2,
+      "wall_clock_seconds": 16021.0,
+      "children_generated": 15,
+      "children_compiled": 12,
+      "children_fully_evaluated": 1,
+      "archive_candidates": [
+        "20260514_072145_131086"
+      ],
+      "archive_size_after": 4,
+      "evaluation_budget_tasks_consumed": 88,
+      "best_child_score": 1.0,
+      "avg_child_score": 0.674,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 2,
+          "tasks_added": 2,
+          "num_candidates_in": 12,
+          "num_promoted": 3,
+          "num_killed": 9
+        },
+        {
+          "rung": 1,
+          "budget_size": 10,
+          "tasks_added": 8,
+          "num_candidates_in": 3,
+          "num_promoted": 1,
+          "num_killed": 2
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 40,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        }
+      ]
+    },
+    {
+      "gen": 3,
+      "wall_clock_seconds": 16957.0,
+      "children_generated": 15,
+      "children_compiled": 10,
+      "children_fully_evaluated": 1,
+      "archive_candidates": [
+        "20260514_115424_040075"
+      ],
+      "archive_size_after": 5,
+      "evaluation_budget_tasks_consumed": 84,
+      "best_child_score": 1.0,
+      "avg_child_score": 0.600,
+      "rungs": [
+        {
+          "rung": 0,
+          "budget_size": 2,
+          "tasks_added": 2,
+          "num_candidates_in": 10,
+          "num_promoted": 3,
+          "num_killed": 7
+        },
+        {
+          "rung": 1,
+          "budget_size": 10,
+          "tasks_added": 8,
+          "num_candidates_in": 3,
+          "num_promoted": 1,
+          "num_killed": 2
+        },
+        {
+          "rung": 2,
+          "budget_size": 50,
+          "tasks_added": 40,
+          "num_candidates_in": 1,
+          "num_promoted": 1,
+          "num_killed": 0
+        }
+      ]
+    }
+  ],
+  "archive": [
+    {
+      "run_id": "initial",
+      "rate": 0.3404255319148936,
+      "resolved": 16,
+      "submitted": 47
+    },
+    {
+      "run_id": "20260513_201108_588422",
+      "parent_commit": "initial",
+      "entry": "sphinx-doc__sphinx-10435",
+      "rate": 0.6585365853658537,
+      "resolved": 27,
+      "submitted": 41,
+      "evaluated_task_count": 41,
+      "promotion_decision": "promoted",
+      "final_rung": 2,
+      "note": "Gen-0 winner. Best ASHA child overall. Initial → Best: +31.81pp absolute, +93% relative."
+    },
+    {
+      "run_id": "20260514_025310_957460",
+      "parent_commit": "initial",
+      "entry": "sphinx-doc__sphinx-10323",
+      "rate": 0.5,
+      "resolved": 23,
+      "submitted": 46,
+      "evaluated_task_count": 46,
+      "promotion_decision": "promoted",
+      "final_rung": 2,
+      "note": "Gen-1 winner. Regression vs gen 0."
+    },
+    {
+      "run_id": "20260514_072145_131086",
+      "parent_commit": "20260514_025310_957460",
+      "entry": "sphinx-doc__sphinx-7748",
+      "rate": 0.5652173913043478,
+      "resolved": 26,
+      "submitted": 46,
+      "evaluated_task_count": 46,
+      "promotion_decision": "promoted",
+      "final_rung": 2,
+      "note": "Gen-2 winner. ASHA early-bird picked this over higher-scoring 20260514_025310_957460-child (132561 rate=0.818 at rung 1 vs 131086 rate=0.70) because 131086 finished rung 1 first."
+    },
+    {
+      "run_id": "20260514_115424_040075",
+      "parent_commit": "20260514_025310_957460",
+      "entry": "django__django-12406",
+      "rate": 0.4888888888888889,
+      "resolved": 22,
+      "submitted": 45,
+      "evaluated_task_count": 45,
+      "promotion_decision": "promoted",
+      "final_rung": 2,
+      "note": "Gen-3 winner. Further regression. All gen-3 evaluated children scored rate=1.0 at rung 0 (saturation) — selection by speed, not score."
+    }
+  ],
+  "notes": [
+    "accuracy_score = resolved_instances / submitted_instances. Empty patches NOT in denominator — model-specific failure mode of minimax-m2.5. See metric_flaw_empty_patches.md.",
+    "Archive numbers (resolved/submitted/evaluated_task_count) come from each child's final-rung file (e.g. *_asha_rung_2_0.json), not metadata.json's overall_performance which sums cumulative rung submissions.",
+    "ASHA uses asynchronous SHA: a candidate promotes as soon as it ranks in top-K of rung-r completions seen so far. With selfimprove_workers=2 and FIFO ThreadPoolExecutor, async benefit was partial — gen 0 ran HB-like (6.70h) because all 15 children processed rung 0 before promotion fired; gens 1-3 averaged 4.55h as the worker pool stayed busy with mixed-rung tasks.",
+    "Wall 20.34h = ~32% faster than HB pilot (30.0h) — async benefit measurable but limited by workers=2 bottleneck.",
+    "Required scheduler fix before launch: schedulers.py:15 ASHA_GENERATION_EVAL_TIMEOUT_SECONDS = 36 hours (split from GENERATION_TIMEOUT_SECONDS = 1.5h which was reused incorrectly and would have killed the run mid-rung-0). Commit 5945c0d.",
+    "Compile rate 75% averaged (12/15, 11/15, 12/15, 10/15) — better than GA's 60%, worse than baseline's 100%, similar to HB's 70%.",
+    "Selection-policy sub-optimality observed in gen 2: 131086 (rate=0.70 at rung 1) promoted over 132561 (rate=0.818) because 131086 finished first. Quota=1 at rung-1 means first-with-positive-score wins.",
+    "All gen-3 evaluated children scored 1.0 at rung 0 — saturation. ASHA promotion at rung 0 reduced to pure RNG of which worker finishes first. Suggests adaptive rung budgets for future work (grow as archive matures).",
+    "Archive non-monotonic: gen 0 peak 65.85% > gen 2 (56.52%) > gen 1 (50%) > gen 3 (48.89%). Score_child_prop selection biased toward newer archive members (lower children_count), which had lower true quality."
+  ]
+}
