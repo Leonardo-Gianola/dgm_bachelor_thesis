@@ -59,6 +59,14 @@ Output lands in `output_dgm/<timestamp>/`.
 
 ## Experiments (Thesis)
 
+> **STATUS 2026-05-16 — EXPERIMENTS FROZEN.** The thesis dataset is final:
+> only 4 single-seed 4-gen pilot runs exist (baseline, hyperband, ga, asha)
+> in `experiments/results/`. **Phase 1–3 were cancelled and will NOT run**
+> (API budget exhausted). The `run_preliminary.py` Phase commands below are
+> retained for reference only — do not assume any run is pending or suggest
+> launching one. Results chapter is written from the 4 pilots; analysis is
+> exploratory, n=1, no significance tests.
+
 ```bash
 # Phase 1: baseline vs hyperband (3 seeds, 8 gens each)
 python experiments/run_preliminary.py --phase 1
