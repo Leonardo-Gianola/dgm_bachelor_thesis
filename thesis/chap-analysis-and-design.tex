@@ -1,68 +1,316 @@
 \chapter{Method}
 \label{chap:analysis-and-design}
 
-This chapter describes the four schedulers under comparison
-(Section~\ref{sec:schedulers}), the fair-comparison protocol used to run them
-(Section~\ref{sec:protocol}), and the metrics reported in
-Chapter~\ref{chap:results} (Section~\ref{sec:metrics}).
+This chapter establishes the four scheduler variants and the experimental
+protocol used to compare them on the research question: under a fixed
+per-generation task budget, which scheduler produces the
+highest-performing agent at the lowest cost. All four variants share the
+same language model (minimax-m2.5), benchmark, number of generations,
+initial archive, seed, and per-generation task budget; differences reside
+only in candidate selection and promotion policy, isolating the scheduler
+as the sole independent variable. Section~\ref{sec:schedulers} defines
+each scheduler and its purpose. Section~\ref{sec:protocol} specifies the
+experimental protocol. Section~\ref{sec:metrics} lists the collected
+metrics and their relevance to the research question.
+Section~\ref{sec:analysis} sets the analysis plan.
+Section~\ref{sec:threats} discusses threats to validity.
 
-\section{Scheduler Variants}
+\section{Subjects Under Comparison}
 \label{sec:schedulers}
 
-All four schedulers share the same parent-selection rule, the same initial
-archive, and the same per-child compile and patch-non-empty checks.  They
-differ only in how they allocate the per-generation evaluation budget across
-children.
-
 \paragraph{Baseline.}
-The original DGM evaluation policy.  For each child, the scheduler runs a
-three-stage evaluation pipeline (\texttt{stage\_small} on a few tasks,
-\texttt{stage\_medium} on more tasks, full evaluation on all 50 tasks) and
-promotes the child to the next stage only if it exceeds a score threshold.
+Baseline is the base configuration of the system and is used as the
+reference scheduler. It evaluates each child through a fixed three-stage
+pipeline of cumulative task counts, killing candidates between stages
+on a fixed threshold at rung~0 and an archive-relative threshold at
+rung~1. The promotion mechanism of this scheduler is based on three
+stages: small (3 tasks), medium (12 tasks), and full (35 tasks), for a
+total of 50 tasks per fully-evaluated child. To pass from the small to
+the medium stage, the child must resolve at least 40\% of the
+small-stage tasks. To pass from the medium to the full stage, the
+child's cumulative score must meet or exceed the full-evaluation
+threshold (the lowest score in the current archive). Once at the full
+stage the child is evaluated on the 35 remaining tasks to obtain its
+final score.
+
+Shared run controls used by all schedulers:
+\texttt{--selfimprove\_size} controls the number of children per
+generation; \texttt{--generation\_task\_budget\_total} is the maximum
+number of tasks per generation, ensuring a fair budget across schedulers;
+\texttt{--selfimprove\_workers} sets the number of evaluations run in
+parallel; \texttt{--num\_benchmark\_evals} controls the number of times
+each child re-runs the same task subset; \texttt{--benchmark} selects the
+benchmark suite (SWE-bench, SWE-bench mini, or polyglot). Other run
+controls: seed, max generations, archive update policy, shallow
+evaluation, skip-final-evaluation, and evaluation noise.
 
 \paragraph{Hyperband.}
-Synchronous successive halving with budgets $b = [2, 10, 50]$ tasks and
-reduction factor $\eta = 5$.  All children are evaluated at the smallest
-budget, the top $1/\eta$ are kept and re-evaluated at the next budget, and
-so on.  The scheduler waits for every child in a rung to finish before
-promoting.
+Hyperband is the synchronous Successive Halving implementation for DGM,
+where each candidate receives a number of tasks directly proportional to
+how well it ranks at each rung. The evaluation is organised into rungs;
+each rung evaluates the surviving candidates on its assigned task budget
+and keeps the top $1/\eta$ fraction, where $\eta$ is the reduction
+factor. $\eta$ controls two things at each rung: the survival fraction
+($1/\eta$) and the per-candidate budget growth (approximately
+$\eta\times$ larger task budget at the next rung). Per rung: evaluate all
+surviving candidates on the incremental tasks, score them by the
+cumulative resolution rate across all tasks seen so far, wait for all
+evaluations to finish, and promote $\lceil n_r / \eta \rceil$ children
+with a positive score. For example, with $n = 15$ and $\eta = 5$:
+rung~0 $\rightarrow$ 3 promoted; rung~1 $\rightarrow$ 1 promoted. In the
+last rung every surviving candidate is kept.
+
+Hyperband-specific parameters: \texttt{--hyperband\_eta} (the reduction
+factor); \texttt{--hyperband\_budgets} (the cumulative task counts at
+each rung; default \texttt{2,10,50});
+\texttt{--hyperband\_initial\_children} (number of children spawned at
+rung~0). This scheduler replaces the baseline's fixed three-stage rule
+with a configurable bracket, spending the same task budget on more
+candidates and killing the least-promising first.
 
 \paragraph{ASHA.}
-Asynchronous successive halving with the same $b$, $\eta$, and initial
-population as Hyperband.  A child is promoted to rung $r+1$ as soon as it is
-in the top $1/\eta$ of rung-$r$ completions seen so far, without waiting for
-stragglers.
+ASHA is the asynchronous variant of Hyperband. It uses the same rung
+structure and task budgets as Hyperband but never waits for an entire
+rung to finish before promoting. The promotion mechanism of ASHA is
+conceptually the same as Hyperband but uses a fixed quota per rung
+computed at startup: $\max(1, \lceil n / \eta^{r+1} \rceil)$.
+Evaluations stream in asynchronously. On each completion at
+rung~$r$, ASHA re-ranks all rung-$r$ completions seen so far; if the
+candidate has a positive score and currently sits in the top-quota set,
+it is promoted to rung~$r+1$ immediately. Otherwise it is dropped and
+ASHA continues processing further completions. As soon as a worker slot
+frees, the next pending candidate is dispatched, minimising idle time
+relative to synchronous Hyperband.
 
-\paragraph{GA (blind mutation).}
-Genetic algorithm scheduler that reuses the baseline three-stage evaluation
-pipeline but generates children by \emph{blind} high-temperature LLM
-mutations of a tournament-selected parent.  Unlike DGM's
-self-improvement prompt, the GA mutation prompt does not pass error logs or
-diagnostic context, isolating the contribution of stochastic exploration.
+ASHA reuses Hyperband's parameters: \texttt{--hyperband\_eta},
+\texttt{--hyperband\_budgets}, \texttt{--hyperband\_initial\_children}.
+It extends Hyperband by removing the per-rung synchronisation barrier.
 
-\section{Fair-Comparison Protocol}
+\paragraph{Genetic Algorithm (GA).}
+The Genetic Algorithm (GA) scheduler is a blind-evolution control: it
+preserves DGM's three-stage Baseline evaluation pipeline but strips
+error-log context from child generation. It is used to test whether
+DGM's gains come from error-log-guided self-diagnosis or from random
+mutations followed by selection. Promotion works exactly the same as
+Baseline; the only difference is in child generation, which uses a
+high-temperature LLM mutation with no error-log context.
+
+GA-run-specific parameters: \texttt{--ga\_mutation\_temperature}
+controls the LLM sampling temperature for blind mutations;
+\texttt{--ga\_tournament\_k} controls the tournament size at parent
+selection (activated by setting
+\texttt{--choose\_selfimproves\_method tournament} in
+\texttt{DGM\_outer.py}).
+
+\section{Experimental Protocol}
 \label{sec:protocol}
 
-All four schedulers are run with: \texttt{--benchmark swe\_verified\_mini},
-\texttt{--max\_generation 4}, \texttt{--selfimprove\_size 2},
-\texttt{--seed 0}, and the same initial archive bootstrapped via
-\texttt{test\_swebench.py}.  Hyperband and ASHA additionally use
-\texttt{--hyperband\_eta 5 --hyperband\_budgets 2,10,50
---hyperband\_initial\_children 10}.  All runs target the same model
-(\texttt{openrouter/minimax/minimax-m2.5}) and the same Docker base image.
+The single independent variable across runs is the scheduler choice
+(\texttt{--scheduler}), taking one of four values: \texttt{baseline},
+\texttt{hyperband}, \texttt{asha}, \texttt{ga}. Four runs were
+conducted, one per scheduler.
+
+All other variables are held constant:
+\begin{itemize}
+  \item \textbf{Language model}: minimax-m2.5 (via OpenRouter).
+  \item \textbf{Benchmark}: \texttt{swe\_verified\_mini} (a 50-task
+    subset of SWE-bench Verified).
+  \item \textbf{Initial archive}: bootstrapped with
+    \texttt{test\_swebench.py --benchmark swe\_verified\_mini
+    --full\_mini} into \texttt{initial\_swe\_verified\_mini/}.
+  \item \textbf{Random seed}: \texttt{0}.
+  \item \textbf{Generations per run}: \texttt{4}
+    (\texttt{--max\_generation 4}).
+  \item \textbf{Children per generation}: \texttt{2}
+    (\texttt{--selfimprove\_size 2}) for Baseline and GA; Hyperband and
+    ASHA spawn \texttt{--hyperband\_initial\_children 15} instead.
+  \item \textbf{Per-generation task budget cap}: \texttt{100}
+    (\texttt{--generation\_task\_budget\_total 100}).
+  \item \textbf{Archive update policy}: \texttt{keep\_all}
+    (\texttt{--update\_archive keep\_all}).
+  \item \textbf{Benchmark evaluations per child}: \texttt{1}
+    (\texttt{--num\_benchmark\_evals 1}).
+  \item \textbf{Evaluation noise leeway}: \texttt{0.1}
+    (\texttt{--eval\_noise 0.1}).
+  \item \textbf{Hardware}: Intel Core i7-12800H (14 cores, 20 threads),
+    16~GiB RAM, Fedora Linux 44.
+\end{itemize}
+
+A sample run command for Hyperband:
+
+\begin{lstlisting}[language=bash, basicstyle=\ttfamily\small]
+python DGM_outer.py \
+    --scheduler hyperband \
+    --benchmark swe_verified_mini \
+    --max_generation 4 \
+    --selfimprove_size 2 \
+    --seed 0 \
+    --generation_task_budget_total 100 \
+    --hyperband_eta 5 \
+    --hyperband_budgets 2,10,50 \
+    --hyperband_initial_children 15
+\end{lstlisting}
+
+The other three schedulers use identical flags with
+\texttt{--scheduler} swapped. Baseline drops the three
+\texttt{--hyperband\_*} flags; GA drops them and adds
+\texttt{--ga\_mutation\_temperature 1.0}.
 
 \section{Metrics}
 \label{sec:metrics}
 
-For each run we report:
+The metrics fall into two groups: per-child (recorded in each child's
+\texttt{metadata.json}) and per-generation (aggregated and stored in
+\texttt{dgm\_metadata.jsonl}). Primary metrics for the research
+question are marked \emph{primary}; the remainder are
+\emph{diagnostic}.
+
+\paragraph{Per-child metrics.}
 \begin{itemize}
-  \item \emph{Best child accuracy per generation} on the full 50-task
-    benchmark.
-  \item \emph{Total evaluation tasks consumed} per generation and per run.
-  \item \emph{Compile-rate} and \emph{archive growth} per generation.
-  \item \emph{Wall-clock time} and \emph{API spend} (USD) per generation.
-  \item \emph{Cost-per-percentage-point of improvement} relative to the
-    initial archive --- the primary efficiency metric.
+  \item \texttt{accuracy\_score} (\emph{primary}). Defined as
+    \texttt{total\_resolved\_instances / total\_submitted\_instances}
+    (a rate in $[0, 1]$). Empty patches are tracked separately in
+    \texttt{total\_emptypatch\_ids} and excluded from the denominator;
+    see Section~\ref{sec:threats} for the bias this introduces under
+    minimax-m2.5. Direct measure of agent effectiveness on the tasks it
+    attempted.
+  \item \texttt{is\_compiled} (\emph{diagnostic}). A boolean flag
+    (\texttt{is\_compiled\_self\_improve} in
+    \texttt{utils/evo\_utils.py}) that is \texttt{True} when the child
+    (a) produced at least one non-empty patch, i.e.\
+    \verb|len(total_resolved_ids) + len(total_unresolved_ids) > 0|, and
+    (b) has \texttt{compile\_failure\_reason == None}. Tracks wasted
+    budget on children whose patch never compiled or was empty.
+  \item \texttt{promoted\_from\_rung} (\emph{diagnostic}). Per-child
+    integer: the highest rung the child was promoted from
+    (\texttt{None} if killed at rung~0). Reveals how aggressively each
+    scheduler prunes and how budget is concentrated on survivors.
+  \item \texttt{token\_usage\_total} (\emph{primary, cost component}).
+    Sum of input + output tokens consumed by the child across all LLM
+    calls (mutation generation, evaluation iterations). Read directly
+    from \verb|metadata['token_usage_total']|. Multiplied by the
+    minimax-m2.5 token prices to convert to USD.
+  \item \texttt{evaluated\_task\_count} (\emph{diagnostic}). Number of
+    distinct tasks the child was actually evaluated on
+    (\texttt{total\_submitted\_instances}). Used to determine whether
+    the child reached the full budget, and required for inclusion in
+    \texttt{best\_child\_score}.
 \end{itemize}
 
-% TODO: state significance protocol once multi-seed phase 3 is run
+\paragraph{Per-generation metrics} (each entry in
+\texttt{dgm\_metadata.jsonl}):
+\begin{itemize}
+  \item \texttt{best\_child\_score} (\emph{primary outcome}).
+    $\max(\texttt{accuracy\_score})$ over children whose
+    \texttt{evaluated\_task\_count} $\geq$ \texttt{full\_budget\_size}.
+    Single-number summary of the best agent produced in the
+    generation. Tracks DGM's progress over generations.
+  \item \texttt{children\_fully\_evaluated\_count}
+    (\emph{diagnostic}). Number of children whose
+    \texttt{evaluated\_task\_count} reached the final rung's task
+    budget. Indicates how effective the scheduler was at promoting
+    survivors all the way through the pipeline.
+  \item \texttt{evaluation\_budget\_tasks\_consumed} (\emph{primary,
+    efficiency}). Sum of
+    $\mathit{candidates\_at\_rung} \times
+    \mathit{tasks\_added\_at\_rung}$
+    across all rungs/stages in the generation. The denominator of any
+    ``best score per task'' efficiency comparison between schedulers.
+  \item \texttt{cost\_per\_gen} (\emph{primary, cost}). Derived (not
+    stored):
+    $\text{cost} = (\Sigma\ \mathit{input\_tokens}) \times
+    \$0.15/\text{M} + (\Sigma\ \mathit{output\_tokens}) \times
+    \$1.15/\text{M}$,
+    summed across all children in the generation, using
+    minimax-m2.5's OpenRouter prices. This is the metric the thesis
+    seeks to minimise subject to score gain.
+  \item \texttt{generation\_wall\_clock\_seconds}
+    (\emph{diagnostic}). Elapsed wall-clock seconds from generation
+    start to scheduler return, stored as
+    \texttt{generation\_wall\_clock\_seconds}. Captures parallelism
+    gains that are invisible to cost and task counts, critical for
+    evaluating ASHA's asynchronous claim.
+  \item \texttt{archive\_size} and $\Delta$\texttt{archive\_size}
+    (\emph{diagnostic}). \texttt{archive\_size} is the cumulative
+    count of compiled children in the archive after the generation
+    completes; $\Delta$\texttt{archive\_size} is the difference
+    between consecutive generations (i.e., the number of new children
+    promoted into the archive this generation). Tracks population
+    diversity over generations.
+\end{itemize}
+
+\section{Analysis Plan}
+\label{sec:analysis}
+
+Each scheduler was run once (single seed), so no between-run
+aggregation is possible. All analysis is within-run and descriptive,
+without any significance tests or confidence intervals. Within each
+run, all the metadata is loaded and the primary metrics are plotted as
+a function of generation: \texttt{best\_child\_score},
+\texttt{cost\_per\_gen}, and
+\texttt{evaluation\_budget\_tasks\_consumed}. Diagnostic metrics
+(\texttt{generation\_wall\_clock\_seconds},
+\texttt{children\_compiled\_count}, \texttt{archive\_size},
+\texttt{promoted\_from\_rung} distribution) are plotted alongside for
+context. The four schedulers are then compared on the same axes to
+surface differences in trajectory and final state.
+
+The only source of within-run variance is \texttt{--eval\_noise 0.1},
+the noise leeway applied to the archive-worst score threshold in
+\texttt{update\_archive()}. Score changes below this threshold are not
+treated as meaningful improvements.
+
+Aggregated cost, wall-clock, final archive composition, and
+best-of-run score per scheduler are reported in
+Chapter~\ref{chap:results}, Section~[N.1]. The best-of-run score is
+defined as $\max(\texttt{best\_child\_score})$ across the four
+generations of a scheduler's run --- that is, the best child produced
+at any point in the run. Per-generation
+trajectories appear in Section~[N.2]. The cost-vs-score comparison,
+which is the central result for the research question, appears in
+Section~[N.3].
+
+A multi-seed re-run of all four schedulers is required before any
+inferential claim can be made; this is deferred to future work.
+
+\section{Threats to Validity}
+\label{sec:threats}
+
+Several threats apply to this work.
+
+\paragraph{Internal validity.}
+\begin{itemize}
+  \item Single-seed-per-scheduler execution: one run per condition, no
+    within-scheduler variance estimate, no significance claim possible.
+  \item \texttt{accuracy\_score} denominator excludes empty patches;
+    minimax-m2.5 can game the metric by emitting empty patches on tasks
+    it cannot solve.
+  \item Hyperband and ASHA require score $> 0$ for promotion, killing
+    zero-score children regardless of their tie-breaker rank.
+  \item \texttt{num\_benchmark\_evals = 1}: each child's score is a
+    single-sample estimate of LLM-stochastic performance.
+\end{itemize}
+
+\paragraph{External validity.}
+\begin{itemize}
+  \item Results on the 50-task \texttt{swe\_verified\_mini} subset may
+    not generalise to the full SWE-bench Verified (500 tasks), to other
+    SWE benchmarks, or to polyglot tasks.
+  \item All four runs use minimax-m2.5; scheduler behaviour under
+    stronger or weaker LLMs may differ.
+  \item Each run is capped at four generations; long-run dynamics are
+    not observed.
+  \item All four runs start from the same initial archive; biases in
+    the seed agent propagate uniformly.
+\end{itemize}
+
+\paragraph{Construct validity.}
+\begin{itemize}
+  \item \texttt{cost\_per\_gen} measures LLM-spend only;
+    Docker/infrastructure cost is excluded.
+  \item Cost-vs-score framing assumes uniform task value, which
+    SWE-bench Verified does not enforce.
+  \item Wall-clock comparisons are confounded by background system load
+    and OpenRouter latency, particularly relevant for ASHA's
+    asynchronous claim.
+\end{itemize}
