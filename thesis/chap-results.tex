@@ -1,28 +1,248 @@
 \chapter{Results}
 \label{chap:results}
 
-This chapter compares the four schedulers on \texttt{swe\_verified\_mini}
-under the protocol of Section~\ref{sec:protocol}.
+In this chapter we compare the four scheduler runs on
+\texttt{swe\_verified\_mini} under the evaluation protocol of
+Section~\ref{sec:protocol}. We determine which scheduler is the most
+cost-efficient, that is, which reaches a decent accuracy for the least
+budget. All runs are single-seed (n=1) and the comparison is descriptive
+only.
 
-\section{Best Accuracy per Generation}
+% =====================================================================
+\section{Metric Validity}
+\label{sec:results-validity}
+
+Before showing any result, we establish which metrics are valid and why
+others are not. The problematic one is the gamed metric produced by DGM's
+native per-generation selector, which picks \texttt{best\_child\_score}
+from \texttt{dgm\_metadata.jsonl}. The inflation arises as follows. In
+early-rung evaluations only a few tasks are run, and the
+resolved/submitted metric excludes empty patches from the denominator. A
+child that resolves 1 of 1 submitted patches therefore scores 100\%,
+which looks optimal but is a sampling artifact. The evidence is how often
+Hyperband and ASHA reach a raw 100\% score in early rungs.
+
+To report unaltered, trustworthy results we use the final-rung
+resolved/submitted accuracy instead. Even at the final rung,
+resolved/submitted excludes no-patch instances, which inflates
+later-generation rates as agents emit more empty patches. This behaviour
+is inherited from the original DGM repository and is documented rather
+than patched, to keep cross-run comparison consistent. The initial
+archive is identical across all four runs: 16 of 47 submitted patches
+resolved (34.04\%), with 11 empty patches. All numbers in this chapter are
+single-seed (n=1), with no repetition, no confidence interval, and no
+significance test. Multi-seed replication was precluded by the project's
+fixed API budget, which the four pilot runs exhausted. One further
+validity caveat: GA's generation~1 was silently skipped by a
+deterministic seed=0 selection bug, so GA has only two productive
+generations. These threats are revisited in
+Section~\ref{sec:threats}.
+
+% =====================================================================
+\section{Aggregate Comparison}
+\label{sec:results-summary}
+
+This table shows the aggregated results of the four schedulers: four runs,
+four generations each, single seed. The best-of-run column shows the best
+global accuracy across schedulers, with Hyperband on top (75.86\%). The
+cost and efficiency columns favour the Genetic Algorithm, which is 34\%
+cheaper per point of accuracy gained than Hyperband. From the reliability
+angle, the baseline is the clear favourite with a 100\% compile rate. No
+single scheduler dominates every column.
+
+\begin{table}[ht]
+\centering
+\caption{Aggregate per-scheduler results over four generations
+(single seed, \texttt{swe\_verified\_mini}). Best-of-run is the highest
+final-rung resolved/submitted rate; the generation it occurred in is in
+parentheses. ``$\Delta$pp'' is best-of-run minus the 34.04\% initial
+archive. ``\$/pp'' is total cost divided by $\Delta$pp.}
+\label{tab:results-aggregate}
+\begin{tabular}{lrrrrrr}
+\hline
+Scheduler & Cost (\$) & Wall (h) & Children & Compile & Archive
+ & Best-of-run \\
+\hline
+Baseline  & 32.47 & 9.98  &  6 & 100\% & 7 & 59.57\% (g3) \\
+GA        & 26.00 & 9.63  &  5 &  60\% & 4 & 70.59\% (g3) \\
+Hyperband & 44.98 & 30.0  & 54 &  70\% & 5 & 75.86\% (g3) \\
+ASHA      & 39.00 & 20.34 & 60 &  75\% & 5 & 65.85\% (g0) \\
+\hline
+\end{tabular}
+
+\vspace{1ex}
+
+\begin{tabular}{lrrr}
+\hline
+Scheduler & $\Delta$pp & \$/pp & Productive gens \\
+\hline
+Baseline  & +25.53 & 1.27 & 4/4 \\
+GA        & +36.55 & 0.71 & 2/4 \\
+Hyperband & +41.82 & 1.08 & 4/4 \\
+ASHA      & +31.81 & 1.23 & 4/4 \\
+\hline
+\end{tabular}
+\end{table}
+
+% =====================================================================
+\section{Cost-Efficiency}
+\label{sec:results-costscore}
+
+Per-generation cost is not tracked; only run-total cost exists. ``Cost to
+reach threshold X'' therefore means the total cost of the run whose peak
+clears X, not the marginal cost of first crossing X, so the figure
+overstates the true marginal cost to threshold.
+
+This section answers the central research question: which scheduler buys
+the most accuracy per dollar. The Genetic Algorithm is the most efficient,
+peaking at 70.59\% with a cost of \$0.71 per point, the sweet spot of
+lowest run cost and best efficiency, and 34\% cheaper per accuracy point
+than Hyperband. Up to the 70\% mark GA is the cheapest scheduler at every
+threshold, and ASHA is strictly dominated by GA there, reaching equal or
+lower accuracy at higher cost (\$39 versus \$26). The Hyperband run that
+broke 75\% did so with a budget 73\% larger than GA (\$44.98 for 5~pp
+more). Under a fixed budget GA dominates unless a score above roughly
+70\% is required, and in that territory Hyperband is the only option, but
+at a steep premium.
+
+\begin{table}[ht]
+\centering
+\caption{Cheapest scheduler whose best-of-run clears each accuracy
+threshold, and the total run cost paid to get there. Per-generation cost
+is not tracked, so the figure is the whole run's cost, not the marginal
+cost of first crossing the threshold.}
+\label{tab:results-threshold}
+\begin{tabular}{llrr}
+\hline
+Threshold & Cheapest scheduler & Cost (\$) & Peak \\
+\hline
+$\geq 60\%$ & GA        & 26.00 & 70.59\% \\
+$\geq 65\%$ & GA        & 26.00 & 70.59\% \\
+$\geq 70\%$ & GA        & 26.00 & 70.59\% \\
+$\geq 75\%$ & Hyperband & 44.98 & 75.86\% \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.8\textwidth]{../experiments/results/fig_cost_vs_peak}
+\caption{Total run cost versus best-of-run accuracy. The lower right is
+better value. The dashed line is the 34.04\% initial archive. Single
+seed.}
+\label{fig:cost-vs-peak}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.8\textwidth]{../experiments/results/fig_cost_threshold}
+\caption{Cost of the cheapest scheduler clearing each accuracy threshold.
+GA dominates up to its 70.59\% ceiling; only Hyperband clears 75\%, at
+73\% higher cost.}
+\label{fig:cost-threshold}
+\end{figure}
+
+% =====================================================================
+\section{Per-Generation Trajectories}
 \label{sec:results-accuracy}
 
-% TODO: insert plot of best child accuracy per generation, one curve per
-% scheduler. Source: experiments/results/scheduler_comparison_accuracy.pdf
+This shows the per-generation best promoted child at the final rung, with
+empty patches excluded. The baseline rises slowly and monotonically,
+plateauing across generations~1 and~2 (both 54.17\%) before a
+generation-3 breakthrough, a gain of 25.5~pp over the initial archive. The
+Genetic Algorithm lost its first two generations to different causes.
+Generation~0 produced no archive-worthy child (compile failures and
+rung-0 kills), and generation~1 was skipped entirely by the seed=0
+selection bug. It then recovered to about 69\% and 70\%, the steepest
+useful slope over only two generations. Hyperband rose consistently from
+generation~0 to generation~1, dipped slightly at generation~2, and peaked
+at about 75\%, a net upward but noisy trajectory. ASHA produced the best
+generation-0 result, collapsed at generation~1, partially rebounded at
+generation~2, and ended lowest at generation~3 (48.89\%). It is the only
+scheduler finishing below its own generation~0. Rung schedulers (Hyperband
+and ASHA) surface a strong child earlier than the baseline, but only
+Hyperband sustained that trajectory.
 
-\section{Evaluation-Budget Consumption}
-\label{sec:results-cost}
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.85\textwidth]{../experiments/results/fig_accuracy_per_gen}
+\caption{Best promoted child accuracy per generation (final-rung
+resolved/submitted, empty patches excluded). GA generation~0 is marked
+separately as a single-task rung-0 fluke; GA generation~1 was skipped by a
+seed=0 selection bug.}
+\label{fig:accuracy-per-gen}
+\end{figure}
 
-% TODO: table of total tasks consumed per run, plus tasks-per-percentage-point
-% of accuracy gain.
+\begin{table}[ht]
+\centering
+\caption{Per-generation best promoted child accuracy (final-rung
+resolved/submitted). ``n/a'' means no archive-worthy child that
+generation.}
+\label{tab:results-pergen}
+\begin{tabular}{lrrrr}
+\hline
+Gen & Baseline & GA & Hyperband & ASHA \\
+\hline
+0 & 50.00\% & n/a$^{\dagger}$ & 59.26\% & 65.85\% \\
+1 & 54.17\% & n/a$^{\ddagger}$ & 70.00\% & 50.00\% \\
+2 & 54.17\% & 68.97\% & 67.44\% & 56.52\% \\
+3 & 59.57\% & 70.59\% & 75.86\% & 48.89\% \\
+\hline
+\end{tabular}
 
+\vspace{0.5ex}
+{\footnotesize $^{\dagger}$ GA generation~0 raw 1/1 rung-0 fluke, excluded
+as non-representative (Section~\ref{sec:results-validity}).\quad
+$^{\ddagger}$ GA generation~1 skipped (seed=0 selection bug).}
+\end{table}
+
+% =====================================================================
 \section{Compile and Promotion Rates}
 \label{sec:results-compile}
 
-% TODO: per-scheduler compile rate, fraction of children promoted past each
-% rung, and number of argparse-guard rejections.
+This section covers two gates: compile, then rung promotion. For
+reliability the baseline is unmatched at 100\% compile, followed by ASHA
+(75\%) and Hyperband (70\%), and the most erratic is the Genetic Algorithm
+at 60\%. The argparse guard catches broken children before evaluation,
+reducing budget waste. In evaluation tasks spent, Hyperband and ASHA lead
+with about 350 each, roughly three times the Genetic Algorithm's spend and
+about 1.4 times the baseline. For promotion, under 8\% of Hyperband and
+ASHA children reached the final rung, against 83\% for the baseline. This
+is a design tradeoff: rung schedulers spend evaluation budget broad and
+shallow and kill fast, versus the narrow and deep baseline. In general,
+compile rate is inversely related to mutation aggression, and the rung
+sweep cost produces many discarded children.
 
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.6\textwidth]{../experiments/results/fig_eval_tasks}
+\caption{Total evaluation tasks consumed across four generations.
+Hyperband and ASHA pay heavily for wide rung-0 sweeps; GA is cheapest, and
+lost a generation to the skip bug.}
+\label{fig:eval-tasks}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.6\textwidth]{../experiments/results/fig_compile_rate}
+\caption{Fraction of generated children that compiled. The baseline
+reaches 100\%; GA's blind mutation is the least reliable at 60\%.}
+\label{fig:compile-rate}
+\end{figure}
+
+% =====================================================================
 \section{Discussion}
 \label{sec:results-discussion}
 
-% TODO: interpret the comparison once Phase 1--3 finish.
+Under a fixed budget on this benchmark, the Genetic Algorithm achieves the
+best accuracy per dollar (\$0.71 per point), with a competitive peak near
+70\% at the lowest cost (\$26), despite compiling only 60\% and losing its
+first two generations. The quality and budget tradeoff is clear: reaching
+the top accuracy requires Hyperband, but that gain of about 5~pp comes at
+a large cost increase (\$44.98, 73\% over GA). ASHA runs 32\% faster in
+wall time than Hyperband (the async payoff) but at a lower peak and a
+non-monotonic, regressing trajectory, two notable downsides of the async
+tradeoff. The baseline is the only fully reliable scheduler (100\%
+compile) but the lowest-peaking and most predictable. Every claim above is
+bounded by n=1, no significance is possible at a single seed, and a
+multi-seed re-run is left to future work.
