@@ -1,67 +1,394 @@
 \chapter{Implementation}
 \label{chap:implementation}
 
-The thesis builds on a fork of the public DGM
-codebase.\footnote{TODO: cite original DGM repository URL.}
-This chapter documents the additions (Section~\ref{sec:fork}), the scheduler
-implementations (Section~\ref{sec:scheduler-impl}), and the operational
-guards that keep long runs robust (Section~\ref{sec:guards}).
+This work is an add-on contribution to the Darwin G\"odel Machine paper,
+whose code is public.\footnote{\texttt{https://github.com/jennyzzt/dgm.git}}
+We forked the repo and added an advanced scheduler mechanism to try to
+get as much as possible out of this system. Each scheduler implementation
+is in the \texttt{schedulers.py} file. This chapter documents the fork
+additions (Section~\ref{sec:fork}), the scheduler implementations
+(Section~\ref{sec:scheduler-impl}), and the operational guards that keep
+long runs robust (Section~\ref{sec:guards}).
 
 \section{Fork Additions}
 \label{sec:fork}
 
-The relevant files in the fork are summarized in
-Table~\ref{tab:fork-files}.
+We forked the Darwin G\"odel Machine repo and modified several files from
+the original repo:
 
-\begin{table}[tb]
-  \centering
-  \begin{tabular}{l l}
-    File & Purpose \\\hline
-    \texttt{DGM\_outer.py}          & Main entry point, evolution loop \\
-    \texttt{schedulers.py}          & Baseline, Hyperband, ASHA, GA classes \\
-    \texttt{self\_improve\_step.py} & Child generation and evaluation \\
-    \texttt{coding\_agent.py}       & Initial coding agent \\
-    \texttt{benchmarks/config.py}   & Benchmark registry, mini-subset loader \\
-    \texttt{experiments/}           & Experiment runner and result aggregator \\
-  \end{tabular}
-  \caption{Key files in the DGM fork.}
-  \label{tab:fork-files}
-\end{table}
+\begin{itemize}
+  \item \textbf{\texttt{DGM\_outer.py}}: changed the default benchmark to
+    SWE-bench Verified Mini; created a scheduler integration with a
+    pluggable scheduler hook, re-evaluation-on-promotion budget, new
+    metrics, and the ASHA/GA wiring; added the
+    \texttt{--generation\_task\_budget\_total} CLI argument
+    (\texttt{DGM\_outer.py:277}, default \texttt{None}; the value
+    \texttt{100} used in the experiments is a run-time flag, not a code
+    default). The last changes were general bug fixes.
+  \item \textbf{\texttt{self\_improve\_step.py}}: four big changes. Added
+    support for the OpenRouter API key and new models; added the new
+    benchmark switch, scheduler budget/metrics, and the GA mutation hook;
+    wired the argparse guard. (Note: the Docker repo-copy and container
+    git-config fixes are \emph{called} from here but live in
+    \texttt{utils/docker\_utils.py}, see Section~\ref{sec:guards}.) Last,
+    fixed bugs introduced by these changes.
+  \item \textbf{\texttt{coding\_agent.py}}: scheduler budget and metrics;
+    the empty-patch retry loop (Section~\ref{sec:guards}).
+  \item \textbf{\texttt{llm.py}}: the base LLM caller layer. Added the
+    model registry entries \texttt{openrouter/minimax/minimax-m2.5} and
+    \texttt{openrouter/openai/gpt-5-mini} (\texttt{llm.py:20-21}) as
+    usable models, and adapted the layer to keep everything in sync with
+    the original code. Minimax is a thinking model, so part of its output
+    is a thinking segment wrapped in thinking/JSON tags that must be
+    stripped to prevent empty-response failures.
+  \item \textbf{\texttt{llm\_withtools.py}}: the tool-calling layer.
+    Replaced the default model GPT-5-Mini with Minimax. Created a
+    dedicated \texttt{chat.completion} path for Minimax with its standard
+    \texttt{tool\_calls} format and no strict mode, because the OpenRouter
+    \texttt{chat.completion} schema does not support strict tool-calling.
+    It now preserves the full tool-call objects in history, catches
+    malformed JSON to skip gracefully without crashing, and mirrors the
+    tag-stripping helpers from \texttt{llm.py}.
+\end{itemize}
+
+We created new files for the new scheduler mechanisms:
+
+\begin{itemize}
+  \item \textbf{\texttt{schedulers.py}}: the entire pluggable scheduler
+    layer, containing \texttt{BaseScheduler} plus
+    Baseline/Hyperband/ASHA/GA subclasses, per-generation budget
+    recording, and timeout constants. This file did not exist in the
+    original DGM repo; DGM only had the fixed three-stage evaluation that
+    the Baseline scheduler reproduces. This is the core thesis
+    contribution: all scheduler logic resides here and the schedulers are
+    swappable from one file.
+  \item \textbf{\texttt{benchmarks/config.py}}: a configurable test suite
+    to select SWE-bench, Polyglot, or SWE-bench Verified Mini. Replaces
+    DGM's hardcoded SWE-bench paths. Created because we needed
+    reproducible pinned SWE-bench Verified Mini subsets and cumulative
+    rung sizes for scheduler evaluation.
+  \item \textbf{\texttt{prompts/ga\_mutation\_prompt.py}}: the mutation
+    prompt for the genetic algorithm, with no error-log context, asking
+    the LLM for random exploration mutations. Reuses the coding-agent
+    summary and current-code logic from the self-improvement prompts and
+    applies high temperature at call time.
+  \item \textbf{\texttt{compare\_scheduler\_runs.py}}: reads all results
+    from the \texttt{dgm\_metadata.jsonl} files of the four scheduler runs
+    and aggregates them into one JSON for cross-scheduler comparison.
+  \item \textbf{\texttt{tests/test\_benchmark\_registry.py}}: verifies the
+    pinned, cumulative benchmark subset and keeps the legacy benchmarks
+    under a legacy register key for backward compatibility. Added because
+    a fixed subset size is required for a fair comparison between
+    schedulers.
+\end{itemize}
 
 \section{Scheduler Implementations}
 \label{sec:scheduler-impl}
 
-All four schedulers derive from a common \texttt{BaseScheduler} that owns
-the per-generation budget bookkeeping.  Each subclass overrides
-\texttt{run\_generation} with its own promotion logic.
+\subsection{BaseScheduler}
 
-% TODO: short subsection per scheduler with the key promotion rule and a
-% pseudo-code listing.
+This is the parent scheduler all others override. It defines the contract
+abstractly: \texttt{run\_generation(...)} and
+\texttt{get\_generation\_child\_count(...)} both
+\texttt{raise NotImplementedError}, so subclasses must supply the
+implementation. It provides two shared parallel-executor helpers:
+\texttt{\_generate\_children(...)} for parallel child-patch generation and
+\texttt{\_evaluate\_children(...)} for parallel evaluation. Promotion,
+ranking, and metadata-marking are shared module-level helpers
+(\texttt{\_promote\_top\_k}, \texttt{\_rank\_children},
+\texttt{\_mark\_promotion\_decisions}) that every subclass calls.
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true]
+class BaseScheduler:
+    run_generation(...)             -> raise NotImplementedError   # abstract
+    get_generation_child_count(...) -> raise NotImplementedError   # abstract
+
+    _generate_children(entries):
+        executor = ThreadPool(selfimprove_workers)
+        submit generate_child_patch for each entry
+        wait FIRST_COMPLETED until all done or GENERATION_TIMEOUT
+        return child_ids
+
+    _evaluate_children(run_ids, task_list, rung):
+        executor = ThreadPool(selfimprove_workers)
+        submit evaluate_existing_child for each run_id
+        return evaluated_ids
+
+# module-level helpers (not methods):
+_rank_children(ids)            -> sort by (-score, tokens, run_id)
+_promote_top_k(ids, k, pos?)   -> top k, optionally require score>0
+_mark_promotion_decisions(...) -> write promotion_decision / promoted_from_rung
+\end{lstlisting}
+
+\subsection{Baseline}
+
+Builds on BaseScheduler and adds five instance attributes: three task-ID
+lists \texttt{stage\_small\_issues} / \texttt{stage\_medium\_issues} /
+\texttt{final\_stage\_issues} (one per eval stage),
+\texttt{expected\_task\_counts} (used to check whether a child ran enough
+tasks for its results to be valid), and \texttt{test\_more\_threshold}
+(the promotion gate; a child advances if it solves at least this fraction
+of the stage). \texttt{get\_generation\_child\_count} returns how many
+children to spawn per generation. \texttt{run\_generation} is a linear,
+no-loop implementation with three sequential eval blocks; a
+\texttt{consumed\_budget} accumulator increments after each block by
+number of children $\times$ stage size.
+
+The rung structure is: \textbf{Rung 0 (small)} evaluates all children,
+promoting those that resolve at least 40\% of small-stage tasks;
+\textbf{Rung 1 (medium)} takes the Rung-0 survivors and promotes those
+whose score is greater than or equal to the full-evaluation threshold;
+\textbf{Rung 2 (full)} takes the remaining children, evaluates them on the
+full suite, and keeps all of them. Every stage promotion has two steps:
+(a) a quality gate filtered by the threshold (Rungs 0 and 1), then (b) a
+budget cap that takes the max number of promotions equal to remaining
+budget divided by next-stage size, keeping the top-k ranked. The gate
+selects eligible candidates; the budget cap then trims. All scheduler
+metadata is saved via \texttt{finalize\_child\_metadata} per child.
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true]
+run_generation(entries, full_eval_threshold):
+    children = _generate_children(entries)
+
+    # Rung 0 -- small
+    _evaluate_children(children, small_issues, rung=0)
+    consumed += len(children) * len(small_issues)
+    s1 = [c for c in children if resolved(c) >= 0.4 * len(small_issues)]
+    s1 = _promote_top_k(s1, remaining_budget // len(medium_issues))   # budget cap
+    _mark_promotion_decisions(children, s1, 0)
+
+    # Rung 1 -- medium
+    _evaluate_children(s1, medium_issues, rung=1)
+    consumed += len(s1) * len(medium_issues)
+    s2 = [c for c in s1 if score(c) >= full_eval_threshold]
+    s2 = _promote_top_k(s2, remaining_budget // len(final_issues))
+    _mark_promotion_decisions(s1, s2, 1)
+
+    # Rung 2 -- full (keep all)
+    _evaluate_children(s2, final_issues, rung=2)
+    consumed += len(s2) * len(final_issues)
+
+    finalize_child_metadata(c, post_improve_diagnose=args.value) for c in children
+    return compiled children as archive_candidates
+\end{lstlisting}
+
+\subsection{Hyperband}
+
+Builds on BaseScheduler and adds three instance attributes:
+\texttt{self.eta} (reduction factor; each rung keeps only the top
+$1/\eta$ and kills the rest), \texttt{self.budgets} (ascending list of
+task counts per rung), and \texttt{self.reference\_instance\_ids} (fixed
+task-ID pool, for a consistent pool across children). Three helpers:
+\texttt{\_generation\_budget\_target()} defines the target task count per
+generation; \texttt{\_budget\_cost(n)} simulates the full SHA cost under
+an incremental task-cost model;
+\texttt{get\_generation\_child\_count} returns
+\texttt{--hyperband\_initial\_children} directly when that flag is set,
+and only when it is unset falls back to picking the largest \texttt{n}
+with \texttt{\_budget\_cost(n) <= target}. The experiments used
+\texttt{--hyperband\_initial\_children 15}, so the
+\texttt{\_budget\_cost} search path was not exercised in the actual runs.
+
+\texttt{\_task\_increments(generation\_seed)} does two things per
+generation: it shuffles the task list with a seed so all children get the
+same shuffle in a generation, then cuts the shuffled list into chunks, one
+per rung. One implementation detail worth noting: each chunk holds
+\emph{different} tasks, so a child at rung~1 is tested only on tasks
+3--10, not tasks 1--10. This is a slight deviation from textbook
+Hyperband.
+
+\texttt{run\_generation} is implemented for the SWE-bench benchmark only.
+The loop is over rungs, each with a \texttt{budget\_size} and a
+\texttt{task\_increment}. The synchronous barrier means
+\texttt{\_evaluate\_children} returns only when all current candidates are
+done, so every candidate finishes a rung before any promotion. Consumed
+budget is the sum of task increments $\times$ candidates, so it counts
+delta tasks only. Promotion works as follows: at the last rung all
+survivors pass; otherwise promote $\lceil$candidates $/ \eta\rceil$ of the
+top-K with score greater than 0. All rung data is stored in the per-rung
+dict, and \texttt{current\_candidates = promoted} feeds the next rung.
+
+The main differences from Baseline: the winner is the single top finalist
+(\texttt{winner = \_rank\_children(survivors)[0]}); in
+\texttt{finalize\_child\_metadata} only the winner gets
+\texttt{post\_improve\_diagnose = args.post\_improve\_diagnose} (others
+\texttt{False}), saving cost so the diagnosis runs once; and the archive
+is updated with a single member, so only the winner is added each
+generation. Five structural contrasts vs Baseline: (1) Baseline archives
+all compiled, fully-evaluated children while Hyperband archives only the
+winner, so archive growth rate differs; (2) Hyperband's rung structure is
+configurable while Baseline's is three hard-coded blocks; (3) Hyperband
+promotes with \texttt{require\_positive=True} while Baseline uses a static
+\texttt{resolved >= 0.4 * small} gate, a different criterion shape; (4)
+post-improvement diagnosis is winner-only in Hyperband, all-children in
+Baseline; (5) the ``fully tested'' task count is read from
+\texttt{budgets[-1]} in Hyperband versus
+\texttt{expected\_task\_counts[-1]} in Baseline.
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true]
+run_generation(entries, _):
+    children = _generate_children(entries)
+    increments = _task_increments(seed)        # disjoint chunks, one per rung
+
+    current = children
+    for r, (budget_size, task_inc) in enumerate(zip(budgets, increments)):
+        _evaluate_children(current, task_inc, rung=r)   # SYNC: all finish first
+        consumed += len(current) * len(task_inc)
+        if r == last_rung:
+            promoted = current                          # keep all
+        else:
+            promoted = _promote_top_k(current,
+                                      ceil(len(current)/eta),
+                                      require_positive=True)
+        _mark_promotion_decisions(current, promoted, r)
+        current = promoted
+
+    winner = _rank_children(current)[0] if current else None
+    finalize_child_metadata(c, post_improve_diagnose=False) for c in children
+    if winner: finalize_child_metadata(winner, post_improve_diagnose=args.value)
+    return archive_candidates = [winner]
+\end{lstlisting}
+
+\subsection{ASHA}
+
+ASHA has the same subclass attributes as Hyperband (\texttt{eta} /
+\texttt{budgets} / \texttt{reference\_instance\_ids}) and byte-identical
+\texttt{\_generation\_budget\_target} / \texttt{\_budget\_cost} /
+\texttt{get\_generation\_child\_count} / \texttt{\_task\_increments}
+helpers.
+
+The unique points: it precomputes a quota array at startup,
+\texttt{promote\_quotas[r] = max(1, ceil(n\_children / eta\^{}(r+1)))},
+before the loop, differing from Hyperband which recomputes the promote
+count live per rung. ASHA fixes quotas upfront off the initial
+\texttt{n\_children}, and the quota is a \emph{cumulative} cap on total
+promotions ever from rung~r, not a per-rung count. There is no
+synchronous barrier: a single shared \texttt{ThreadPoolExecutor} serves
+the whole generation, all children are submitted at rung~0, and
+\texttt{wait(FIRST\_COMPLETED)} processes evals as each lands. This
+removes one of Hyperband's barriers. ASHA does not wait for all children
+to finish a rung; it promotes each child as it finishes a rung if it
+meets the promotion threshold, without waiting for the others.
+
+ASHA's promote-on-arrival structure still ranks candidates by score, but
+because the quota fills from the completions seen so far, a fast mediocre
+child can take a quota slot before a slower but better child has landed, a
+trade-off of ASHA. It refills slots immediately: each promotion
+synchronously submits the candidate's next-rung evaluation within
+\texttt{\_asha\_try\_promote}, folding the new future into the pending set
+so workers never idle between rungs. Finally, ASHA uses a longer timeout
+(\texttt{ASHA\_GENERATION\_EVAL\_TIMEOUT\_SECONDS}, 36~h, versus the
+1.5~h patch-generation timeout) because its rung chains run for longer
+and need more time to terminate the full evaluation; this separation of
+the eval-loop timeout from the patch-generation timeout was a dedicated
+fix.
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true]
+run_generation(entries, _):
+    children = _generate_children(entries)
+    quotas = [max(1, ceil(n_children / eta**(r+1)))      # precomputed, cumulative
+              for r in range(n_rungs-1)]
+
+    pending = {submit_eval(c, rung=0) for c in children}  # shared executor
+    while pending:
+        done, pending = wait(pending, FIRST_COMPLETED)    # ASYNC: no barrier
+        for f in done:
+            run_id, r = future_info[f]
+            consumed += len(task_increments[r])
+            rung_completed[r].append(run_id)
+        for r in range(n_rungs-1):                         # low to high: chain
+            for c in _rank_children(rung_completed[r]):    # ranked by score
+                if promoted[r] < quotas[r] and score(c) > 0 and c not promoted:
+                    promote c; pending |= {submit_eval(c, r+1)}  # refill slot
+
+    winner = _rank_children(rung_completed[last])[0]
+    return archive_candidates = [winner]
+\end{lstlisting}
+
+\subsection{GA}
+
+The shortest scheduler. It inherits all of BaselineScheduler and adds one
+attribute, \texttt{self.mutation\_temperature =
+args.ga\_mutation\_temperature}. It overrides one method,
+\texttt{\_generate\_children}: it ignores caller flags and calls
+\texttt{super().\_generate\_children(..., blind\_mutation=True,
+mutation\_temperature=self.mutation\_temperature)}. The mutation logic
+itself lives in \texttt{self\_improve\_step.py:470} and
+\texttt{prompts/ga\_mutation\_prompt.py}; error-log diagnosis is replaced
+by blind high-temperature sampling. Selection is tournament parent-choice
+in \texttt{DGM\_outer.py}, not in the scheduler.
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true]
+class GAScheduler(BaselineScheduler):
+    __init__: self.mutation_temperature = args.ga_mutation_temperature
+
+    _generate_children(entries, search_strategy, ...):   # override
+        return super()._generate_children(
+            entries, search_strategy,
+            blind_mutation=True,                          # force blind
+            mutation_temperature=self.mutation_temperature)
+
+    # run_generation / rung logic: inherited unchanged from BaselineScheduler
+\end{lstlisting}
 
 \section{Operational Guards}
 \label{sec:guards}
 
-Long DGM runs are sensitive to a class of silent failures in which a child
-agent fails to evaluate but still consumes its full budget.  We add three
-guards to keep these from polluting the comparison.
+Long DGM runs are sensitive to a class of silent failures in which a
+child agent fails to evaluate but still consumes its full budget. We add
+three guards to keep these from polluting the comparison.
 
 \paragraph{Argparse guard.}
-The eval harness invokes the modified \texttt{coding\_agent.py} with a fixed
-set of command-line flags
-(\texttt{--problem\_statement}, \texttt{--git\_dir}, \texttt{--chat\_history\_file},
+After a child patch is applied inside its container, the harness runs
+\texttt{python /dgm/coding\_agent.py --help} under a 30-second timeout
+before any evaluation begins. The help output is checked for every CLI
+flag the evaluation drivers pass: \texttt{--problem\_statement},
+\texttt{--git\_dir}, \texttt{--chat\_history\_file},
 \texttt{--base\_commit}, \texttt{--outdir}, \texttt{--test\_description},
-\texttt{--self\_improve}, and either \texttt{--instance\_id} for SWE or
-\texttt{--language} for polyglot).  If the LLM-proposed patch removes or
-renames any of these flags, every per-task invocation exits with code 2 and
-the child silently burns its budget.  After applying the patch we run
-\texttt{python /dgm/coding\_agent.py --help} inside the container and verify
-that the expected flag names appear in the help text; otherwise the child
-is marked \texttt{model\_patch\_notempty=False} with an explicit
-\texttt{compile\_failure\_reason} and skipped.
+\texttt{--self\_improve}, plus \texttt{--instance\_id} for SWE-style
+benchmarks or \texttt{--language} for polyglot. If the help invocation
+does not exits, or any required flag is absent, the child is marked
+\texttt{model\_patch\_notempty = False} with a
+\texttt{compile\_failure\_reason}, its \texttt{budget\_history} is
+emptied, and it is excluded from evaluation. This prevents a
+self-modification that removes or renames a required argument from
+silently consuming the full task budget on argparse-exit-2 failures. The
+same constraint is also stated explicitly in the self-improvement and
+GA-mutation prompts, reducing how often a mutation strips the flags in
+the first place.
 
 \paragraph{Empty-patch retry.}
-Children that produce an empty patch on the first attempt are retried once
-at a higher LLM temperature before being discarded.
+The coding agent's \texttt{forward()} method wraps generation in a
+validation-retry loop. After the agent runs, \texttt{validate\_patch()}
+rejects a diff that is empty/whitespace-only or that touches only files
+under \texttt{test/} or \texttt{tests/}. On rejection the working tree is
+reset to the base commit, the instruction is rebuilt with an explicit
+failure reason and stronger wording (``your previous attempt FAILED
+because\ldots''), and the agent is re-invoked with a fresh message
+history; this repeats up to \texttt{max\_retries} (default 3). Token
+usage is accumulated across attempts. If all attempts still produce an
+invalid patch the failure is logged and generation proceeds, with the
+empty patch handled downstream. The guard targets models that describe
+edits in prose instead of applying them via the editor/bash tools
+(observed with MiniMax). Important to have in mind that retries do not
+vary sampling temperature, the corrective signal is the strengthened
+prompt and context reset, not increased randomness.
 
-\paragraph{Docker startup retry and per-image build lock.}
-% TODO: short paragraph on the docker fixes from the recent commits.
+\paragraph{Docker startup-retry and per-image build lock.}
+Container provisioning in \texttt{build\_dgm\_container()} has two guards.
+First, image builds are serialized per image name: a module-level dict of
+\texttt{threading.Lock} objects, itself protected by a global guard lock,
+returns one lock per \texttt{image\_name}. The build runs while that lock
+is held, and image existence is re-checked inside the lock (double-checked
+locking), so under concurrent child generation only one thread builds a
+given image while the rest skip straight to reuse. A build exception
+returns \texttt{None}. Second, container startup is retried with
+exponential backoff: for up to \texttt{max\_retries} attempts (default 3)
+the code starts the container, syncs the repository, and resets its git
+state; on failure it logs the error, removes any half-started container so
+the name is freed, waits $10 \cdot 2^{(\text{attempt}-1)}$ seconds (10~s,
+20~s, 40~s), and retries. After exhausting attempts it logs the last
+error and returns \texttt{None}. The retry exists because the Docker
+daemon transiently fails under concurrent container-startup pressure, this
+was observed on consumer hardware with five or more parallel evaluation
+containers contending for the same daemon.
