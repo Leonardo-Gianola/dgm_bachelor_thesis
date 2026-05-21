@@ -61,6 +61,8 @@ PEAK_GEN = {"baseline": 3, "ga": 3, "hyperband": 3, "asha": 0}
 COST = {"baseline": 32.47, "ga": 26.00, "hyperband": 44.98, "asha": 39.00}
 WALL_H = {"baseline": 9.98, "ga": 9.63, "hyperband": 30.0, "asha": 20.34}
 EVAL_TASKS = {"baseline": 253, "ga": 109, "hyperband": 356, "asha": 346}
+INTENDED_TASKS = {"baseline": 253, "ga": 103, "hyperband": 324, "asha": 346}
+ACTUAL_TASKS   = {"baseline": 324, "ga":  91, "hyperband": 250, "asha": 368}
 COMPILE_PCT = {"baseline": 100, "ga": 60, "hyperband": 70, "asha": 75}
 
 
@@ -163,18 +165,27 @@ def fig_accuracy_per_gen():
 # Fig 4 — evaluation tasks consumed
 # ---------------------------------------------------------------------------
 def fig_eval_tasks():
-    fig, ax = plt.subplots(figsize=(5.4, 3.8))
-    xs = range(len(SCHED))
-    ax.bar(xs, [EVAL_TASKS[s] for s in SCHED],
-           color=[COLOR[s] for s in SCHED], edgecolor="black", linewidth=0.5)
-    for i, s in enumerate(SCHED):
-        ax.text(i, EVAL_TASKS[s] + 5, str(EVAL_TASKS[s]),
-                ha="center", fontsize=9)
+    import numpy as np
+    fig, ax = plt.subplots(figsize=(6.2, 3.8))
+    xs = np.arange(len(SCHED))
+    w = 0.38
+    intended = [INTENDED_TASKS[s] for s in SCHED]
+    actual   = [ACTUAL_TASKS[s]   for s in SCHED]
+    ax.bar(xs - w/2, intended, w, label="Intended (planned)",
+           color="#9ecae1", edgecolor="black", linewidth=0.5)
+    ax.bar(xs + w/2, actual,   w, label="Actual exposure (R+U+E)",
+           color="#3182bd", edgecolor="black", linewidth=0.5)
+    ymax = max(max(intended), max(actual))
+    for i, v in enumerate(intended):
+        ax.text(i - w/2, v + ymax * 0.012, str(v), ha="center", fontsize=8)
+    for i, v in enumerate(actual):
+        ax.text(i + w/2, v + ymax * 0.012, str(v), ha="center", fontsize=8)
     ax.set_xticks(list(xs))
     ax.set_xticklabels([LABEL[s] for s in SCHED])
-    ax.set_ylabel("Total evaluation tasks consumed")
-    ax.set_title("Evaluation-budget consumption (4 generations)")
+    ax.set_ylabel("Evaluation tasks (4 generations)")
+    ax.set_title("Workload: intended vs actual exposure")
     ax.grid(True, axis="y", ls=":", alpha=0.5)
+    ax.legend(loc="upper left", fontsize=8, frameon=False)
     save(fig, "fig_eval_tasks.pdf")
 
 

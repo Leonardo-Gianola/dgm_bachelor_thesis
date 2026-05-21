@@ -12,28 +12,39 @@ only.
 \section{Metric Validity}
 \label{sec:results-validity}
 
-Before showing any result, we establish which metrics are valid and why
-others are not. The problematic one is the gamed metric produced by DGM's
-native per-generation selector, which picks \texttt{best\_child\_score}
-from \texttt{dgm\_metadata.jsonl}. The inflation arises as follows. In
-early-rung evaluations only a few tasks are run, and the
-resolved/submitted metric excludes empty patches from the denominator. A
-child that resolves 1 of 1 submitted patches therefore scores 100\%,
-which looks optimal but is a sampling artifact. The evidence is how often
-Hyperband and ASHA reach a raw 100\% score in early rungs.
+Before showing any result, we establish which metrics are reported and
+why an early-rung score is not a fair signal. The headline figure is
+\texttt{accuracy\_score = resolved\_instances / submitted\_instances},
+computed by SWE-bench in
+\texttt{run\_evaluation.py:444} as \texttt{len(predictions)}. Every
+prediction the agent emits is in the denominator, including empty
+patches: an empty patch counts as one submitted instance with zero
+resolved, so empties penalise the rate rather than inflating it.
 
-To report unaltered, trustworthy results we use the final-rung
-resolved/submitted accuracy instead. Even at the final rung,
-resolved/submitted excludes no-patch instances, which inflates
-later-generation rates as agents emit more empty patches. This behaviour
-is inherited from the original DGM repository and is documented rather
-than patched, to keep cross-run comparison consistent. The initial
-archive is identical across all four runs: 16 of 47 submitted patches
-resolved (34.04\%), with 11 empty patches. All numbers in this chapter are
+The real validity issue is sample size at low rungs. A rung~0
+evaluation runs the child on as few as 1 to 3 tasks, and DGM's native
+per-generation selector picks \texttt{best\_child\_score} from
+\texttt{dgm\_metadata.jsonl}. A child that resolves 1 of 1 tasks
+therefore scores 100\%, which looks optimal but is a sampling
+artifact. The evidence is how often Hyperband and ASHA register raw
+100\% rates at rung~0.
+
+To report unaltered, comparable results we use the final-rung accuracy
+of the best promoted child of each generation. The initial archive
+evaluated all four schedulers on the same fixed
+\texttt{swe\_verified\_mini} subset and resolved 16 of 47 submitted
+predictions (34.04\%), of which 11 predictions were empty patches.
+Workload is reported with two complementary metrics in
+Section~\ref{sec:results-compile}: \emph{intended} workload, summed
+from each child's final-rung \texttt{cumulative\_budget\_size} (the
+scheduler's plan), and \emph{actual exposure}, the count of
+predictions SWE-bench produced (resolved + unresolved + empty). The
+two diverge when children are killed mid-rung or when SWE-bench
+retries instances inside a stage. All numbers in this chapter are
 single-seed (n=1), with no repetition, no confidence interval, and no
-significance test. Multi-seed replication was precluded by the project's
-fixed API budget, which the four pilot runs exhausted. One further
-validity caveat: GA's generation~1 was silently skipped by a
+significance test. Multi-seed replication was precluded by the
+project's fixed API budget, which the four pilot runs exhausted. One
+further validity caveat: GA's generation~1 was silently skipped by a
 deterministic seed=0 selection bug, so GA has only two productive
 generations. These threats are revisited in
 Section~\ref{sec:threats}.
@@ -204,21 +215,83 @@ This section covers two gates: compile, then rung promotion. For
 reliability the baseline is unmatched at 100\% compile, followed by ASHA
 (75\%) and Hyperband (70\%), and the most erratic is the Genetic Algorithm
 at 60\%. The argparse guard catches broken children before evaluation,
-reducing budget waste. In evaluation tasks spent, Hyperband and ASHA lead
-with about 350 each, roughly three times the Genetic Algorithm's spend and
-about 1.4 times the baseline. For promotion, under 8\% of Hyperband and
+reducing budget waste. In evaluation tasks spent
+(Table~\ref{tab:results-workload}, Figure~\ref{fig:eval-tasks}), ASHA
+spends the most under both readings (346~planned, 368~actual).
+Hyperband planned 324 tasks but child kills brought its actual exposure
+to 250, close to the baseline's 324. GA is consistently the lightest at
+roughly 100~tasks under either reading. For promotion, under 8\% of
+Hyperband and
 ASHA children reached the final rung, against 83\% for the baseline. This
 is a design tradeoff: rung schedulers spend evaluation budget broad and
 shallow and kill fast, versus the narrow and deep baseline. In general,
 compile rate is inversely related to mutation aggression, and the rung
 sweep cost produces many discarded children.
 
+\begin{table}[ht]
+\centering
+\caption{Per-scheduler evaluation workload across four generations.
+\emph{Intended} is the scheduler-aligned planned workload, summed over
+all children as the final-rung
+\texttt{cumulative\_budget\_size}. \emph{Actual exposure} is the count
+of predictions SWE-bench produced (resolved + unresolved + empty),
+which diverges from \emph{Intended} when children are killed mid-rung
+(actual~$<$~intended) or when SWE-bench retries instances inside a
+stage (actual~$>$~intended).}
+\label{tab:results-workload}
+\begin{tabular}{lrr}
+\hline
+Scheduler & Intended (tasks) & Actual exposure (tasks) \\
+\hline
+Baseline  & 253 & 324 \\
+GA        & 103 &  91 \\
+Hyperband & 324 & 250 \\
+ASHA      & 346 & 368 \\
+\hline
+\end{tabular}
+\end{table}
+
+The intended/actual gap in Table~\ref{tab:results-workload} has two
+mechanisms pulling in opposite directions. The first inflates
+\emph{actual} above \emph{intended}: SWE-bench writes one prediction
+JSON per evaluated stage, and a child promoted through multiple stages
+is re-evaluated on the cumulative task set each time.
+\texttt{get\_all\_performance} sums across all stage files, so an
+instance that appears in three stages of a baseline child is counted
+three times. A single baseline child progressing through
+small~$\to$~medium~$\to$~full contributes
+$3 + 15 + 50 = 68$ predictions to \emph{actual} while \emph{intended}
+counts only the final-rung 50. This is why Baseline's actual~(324)
+exceeds intended~(253), and ASHA shows a smaller version of the same
+effect on promoted children (+22).
+
+The second mechanism deflates \emph{actual} below \emph{intended}:
+tasks where the agent produces no output at all (context-overflow
+crashes on minimax-m2.5, docker timeouts) yield no prediction file and
+drop from \texttt{submitted\_instances} entirely. Hyperband's wide
+rung-0 sweep over 57 children amplifies this: 15 children produced
+fewer predictions than their final-rung plan, against only 3 with
+stage overlap, leaving a net 74-task deficit (intended~324,
+actual~250). GA shows the same pattern in miniature ($-12$) on its
+low-compile-rate population.
+
+The headline accuracy in this chapter remains
+resolved/submitted, that is, resolved per task the agent actually
+attempted. Under that frame the four runs are compared on equal terms
+within each child's realised attempts, and the
+planning-versus-realisation gap is a separate measurement of
+\emph{coverage reliability}, reported alongside the accuracy but not
+folded into it.
+
 \begin{figure}[ht]
 \centering
-\includegraphics[width=.6\textwidth]{../experiments/results/fig_eval_tasks}
-\caption{Total evaluation tasks consumed across four generations.
-Hyperband and ASHA pay heavily for wide rung-0 sweeps; GA is cheapest, and
-lost a generation to the skip bug.}
+\includegraphics[width=.7\textwidth]{../experiments/results/fig_eval_tasks}
+\caption{Evaluation workload across four generations under both
+metrics. \emph{Intended} bars use the summed final-rung
+\texttt{cumulative\_budget\_size}; \emph{Actual exposure} bars use
+resolved + unresolved + empty. Hyperband planned a wide rung-0 sweep
+but child kills cut its actual exposure below the baseline; ASHA leads
+on both readings; GA is cheapest under either.}
 \label{fig:eval-tasks}
 \end{figure}
 
