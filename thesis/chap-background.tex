@@ -1,62 +1,347 @@
 \chapter{Background}
 \label{chap:background}
 
-This chapter introduces the three building blocks the thesis combines: the
-Darwin G{\"o}del Machine (Section~\ref{sec:dgm}), multi-fidelity evaluation
-schedulers (Section~\ref{sec:multifidelity}), and the SWE-bench evaluation
-suite (Section~\ref{sec:swebench}).
+In this chapter we explore in depth the background of the Darwin
+G{\"o}del Machine (DGM), multi-fidelity schedulers, and SWE-bench. The
+three blocks join together to make this thesis: the schedulers are the
+lever the thesis pulls, DGM is the system that moves the lever, and
+SWE-bench is the ground on which it is measured.
+Section~\ref{sec:dgm} explains the Darwin G{\"o}del Machine,
+Section~\ref{sec:multifidelity} the ideas behind multi-fidelity
+evaluation, and Section~\ref{sec:swebench} SWE-bench and
+\texttt{swe\_verified\_mini}.
 
 \section{The Darwin G{\"o}del Machine}
 \label{sec:dgm}
 
-The Darwin G{\"o}del Machine~\cite{Sakana:25} is an evolutionary
-self-improvement loop over coding agents.  An \emph{agent} is a directory
-containing the Python source of an LLM-driven program that, given a problem
-statement and a Git repository, attempts to produce a patch that solves the
-problem.  Each generation proceeds in three phases:
-%
-\begin{enumerate}
-  \item \textbf{Parent selection.}  A scoring rule picks parents from the
-    archive of previously-kept agents.
-  \item \textbf{Child generation.}  Each parent is asked to propose a
-    modification to its own source code; the modified code becomes a
-    \emph{child}.
-  \item \textbf{Child evaluation.}  Each child is run against the benchmark.
-    Children that pass quality and compile checks are added to the archive.
-\end{enumerate}
-%
-The archive seeds the next generation, so improvements compound across
-generations.
+\subsection{G{\"o}del Machines and Self-Reference}
 
-% TODO: cite original DGM paper formally, expand on archive policy and target
-% selection (`score_child_prop`, contextlength targeting, etc.)
+The name comes from Schmidhuber's 2003 paper \emph{G{\"o}del Machines:
+Self-Referential Universal Problem Solvers Making Provably Optimal
+Self-Improvements}~\cite{Schmidhuber:03}. The paper presents the idea
+of a self-referential program that proves its own rewrites beneficial
+before applying them, inspired by G{\"o}del's 1931 self-reference work.
+Schmidhuber introduces the \emph{target theorem}, the rule that a
+rewrite must satisfy to be committed: a rewrite is committed only when
+the system derives, in a fixed axiomatic system, that the rewrite
+increases expected lifetime utility.
+
+The big problem with this idea is that it is not practical. Real
+scenarios carry a formalization burden, the axioms are hard to define,
+and unbounded proof search means a system cannot terminate in finite
+time. As a result, no G{\"o}del Machine has ever modified itself on a
+non-toy task.
+
+The Darwin G{\"o}del Machine~\cite{Sakana:25} replaces ``prove
+beneficial'' with ``measure beneficial on a benchmark''. This turns the
+machine into an evolutionary search, with a number of evolution-inspired
+ideas: an archive of variants, LLM-driven mutations, and fitness from
+SWE-bench.
+
+\subsection{The DGM Loop}
+
+To explain the DGM loop we first define what an agent is. An agent is a
+directory of Python source code. It is not weights, not a prompt, not a
+model checkpoint. The search is therefore over Python code that
+orchestrates a frozen LLM, and the identity of an agent is a git commit
+of its agent directory.
+
+The loop starts with \emph{parent selection}. By default the parent is
+sampled based on its accuracy score (read from the run metadata) and
+an entry, which is the target weakness the child must address.
+\emph{Child generation} then asks the parent to modify its own source
+directory in a three-step LLM call. First, \emph{diagnosis}: the LLM
+reads the parent log and proposes possible improvements. Second,
+\emph{problem statement}: the diagnosis is converted into a
+SWE-bench-style ``issue'', describing the improvement as if it were a
+GitHub bug found in the parent's own code. Third, \emph{self-edit}: the
+parent agent applies changes to its own directory with the synthesized
+problem statement, just as it would solve a Django bug, but now pointing
+at its own source. The output is a git patch over the parent's
+directory.
+
+Finally, \emph{child evaluation} has two gates the child must pass.
+\emph{Gate~1 (compile)} checks the metadata for the required keys,
+verifies that at least one non-empty patch was produced across the
+evaluated tasks, and verifies that the stage budget was respected.
+\emph{Gate~2 (score)} is scheduler-dependent and defined in
+Section~\ref{sec:schedulers}. A child that clears both gates is added
+to the archive.
+
+Generations compound because each generation's archive is the next
+generation's parent pool, so a useful mutation (a new tool, a smarter
+retry loop) becomes the starting code for all subsequent children:
+improvements are inherited, not rediscovered.
+
+% TODO: add block diagram of the loop (parent selection / child
+% generation / child evaluation / archive update).
+
+\subsection{Archive and Parent Selection}
+
+The archive is a monotonic list of commit IDs, one commit per agent,
+stored in \texttt{dgm\_metadata.jsonl}. It has a few key properties.
+It is \emph{monotonic}: it always grows and keeps every compiled child.
+It is \emph{heterogeneous}: it mixes strong and weak agents to maintain
+a diversity reservoir. It always retains the initial seed agent.
+And \emph{parent lineage is tracked}: each child records its parent,
+allowing the sampler to count children per parent.
+
+Parent selection is by default controlled by the
+\texttt{score\_child\_prop} method. For each archive member $c$ it
+computes two factors. The \emph{score factor} is a sigmoid-scaled
+fitness:
+\[
+  s(c) = \frac{1}{1 + \exp\bigl(-10 \cdot (\mathrm{accuracy\_score}(c) - 0.5)\bigr)},
+\]
+which pushes weak agents toward $0$ weight and strong agents toward $1$.
+The score is not linear. The \emph{novelty factor} is a child-count
+penalty:
+\[
+  n(c) = \frac{1}{1 + \mathrm{children\_count}(c)},
+\]
+where \texttt{children\_count} is the number of archive members whose
+parent is $c$. This is a pure prior-use penalty.
+
+The two factors combine into a sampling probability $p(c) \propto
+s(c) \cdot n(c)$. The effect is that high-score, rarely-mined agents
+dominate sampling. Once a strong parent spawns several children, its
+weight drops and weaker but unmined parents become competitive, giving
+a coarse exploration/exploitation balance.
+
+The archive growth policy used in this thesis is \texttt{keep\_all},
+matching the original DGM paper. The alternative,
+\texttt{keep\_better}, only admits children whose score exceeds the
+archive worst. At the tiny scale of four generations storage is not a
+concern, and \texttt{keep\_all} preserves diverse agents and avoids
+biasing the search toward early-discovered local optima.
+
+From a cost perspective, compute scales with children per generation,
+not with archive size. A growing archive only shifts the sampling
+distribution; it does not change the evaluation budget.
+
+\subsection{Targeted Self-Improvement}
+
+Self-improvement is directed: DGM does not ask the parent to ``improve
+itself'' in the abstract, it points the parent at a specific failure.
+Each child receives a target entry, a pair
+$(\mathrm{parent\_commit}, \mathrm{entry})$, which turns the
+self-improvement task into a specific synthetic GitHub issue.
+
+Four target types exist: \texttt{solve\_empty\_patches} (fix the agent
+producing no patch at all), \texttt{solve\_stochasticity} (address the
+LLM being unreliable on first try), \texttt{solve\_contextlength} (the
+input exceeds the token limit and produces a 400 error), and a
+per-task \texttt{<instance\_id>} target (fix one specific failed
+SWE-bench instance).
+
+The target is selected by reading the parent's metadata to see how it
+failed, then \texttt{choose\_selfimproves} runs a sequence of dice
+rolls. If more than 10\% of the parent's evaluated tasks ended in empty
+patches, there is a 25\% chance of picking
+\texttt{solve\_empty\_patches}. Otherwise, there is a 25\% chance of
+\texttt{solve\_stochasticity}. Otherwise, if the parent log contains a
+400 (context-length) error, there is a 25\% chance of
+\texttt{solve\_contextlength}. If none of these gates open, the
+fallback is to pick a random unresolved instance ID and target that.
+
+After the target is chosen, a diagnose call is made to the LLM with the
+evaluation log, the test patch, the problem statement, and the
+parent's failed patch. The LLM is asked to return a structured object
+containing \texttt{log\_summarization},
+\texttt{potential\_improvements}, \texttt{improvement\_proposal},
+\texttt{implementation\_suggestion}, and \texttt{problem\_description}.
+The \texttt{problem\_description} field becomes the synthetic GitHub
+issue that is fed back into the parent's own \texttt{coding\_agent.py}
+as the self-improvement task.
+
+This matters for the schedulers because cheap partial evaluations are
+sufficient to produce the failure logs that steer the next generation's
+mutation, which is what makes multi-fidelity schedulers viable in this
+setting.
 
 \section{Multi-Fidelity Evaluation}
 \label{sec:multifidelity}
 
-Multi-fidelity methods exploit the observation that cheap, partial
-evaluations are often informative enough to discard the worst candidates
-before paying for the full evaluation.  Successive halving runs all
-candidates at a small budget, keeps the top $1/\eta$ fraction, and re-runs
-them at a larger budget; the process repeats until one budget level
-remains.  Hyperband~\cite{Li:18} composes successive halving over several
-bracket sizes to balance exploration and exploitation.  ASHA~\cite{Li:20} is
-an asynchronous variant in which a candidate is promoted to the next rung as
-soon as it ranks in the top $1/\eta$ of the candidates that have completed
-the current rung, eliminating the synchronous straggler problem.
+\subsection{The Core Idea}
 
-In this thesis the candidates are children of a DGM generation and the
-fidelities are the number of benchmark tasks each child is evaluated on.
+Partial evaluation at a cheap budget is correlated enough with the
+full-budget score that ranking on the partial signal lets us discard
+the bottom fraction without losing the eventual winner; full cost is
+paid only on survivors. The claim rests on one main assumption, a
+\emph{monotone partial signal}: the score on a small batch of tasks
+correlates with the score on a larger batch.
+
+The multi-armed bandit idea goes back to Robbins
+(1952)~\cite{Robbins:52}: $k$ slot machines, each paying a noisy reward,
+and the goal is to pick the best with as few pulls as possible. The
+Best Arm Identification (BAI) branch~\cite{Karnin:13} minimizes the
+pulls needed to find the winner rather than maximizing the reward
+accumulated along the way. Within BAI, the \emph{fixed-budget} variant
+spends $T$ pulls total and tries to maximize the probability of
+returning the correct best arm.
+
+Karnin et al.~\cite{Karnin:13} proved that Successive Halving comes
+close to the minimal number of pulls required to solve the BAI problem,
+saving a factor of order $K / \log K$ over uniform-budget allocation.
+SH excels when the best candidate clearly beats the worst, a regime
+well suited to DGM where most children are bad and only a few are good.
+
+This approach fits DGM because evaluation is the bottleneck.
+Evaluation accounts for around 99\% of DGM compute, Docker startup cost
+is fixed, good child mutations are rare, the variance across children
+is large, and partial-evaluation signal is real.
+
+\subsection{Successive Halving}
+
+The inputs to Successive Halving (SH) are the starting candidate count
+$n$, the reduction factor $\eta$, an ascending budget per rung
+$b_0 < b_1 < \dots < b_{s_{\max}}$, and the rung count $s_{\max}$. The
+algorithm starts $n$ candidates at $b_0$, ranks them by score, keeps
+the top $n_1 = n / \eta$, re-runs the survivors at $b_1$, ranks again,
+keeps the top $n_2 = n_1 / \eta$, and continues until reaching
+$b_{s_{\max}}$. The final survivors are the
+winners~\cite{Jamieson:16}.
+
+The limitations of SH are that $n$ and the budget schedule must be
+picked blindly. If $n$ is too small a winner may be missed; if $n$ is
+too large the budget per candidate is too thin. The same trade-off
+applies to the budget schedule, and the $(n, b_0)$ pair has to be
+chosen carefully. There is also a \emph{discrete-score collapse}: when
+many candidates tie, the ranking falls back to insertion order or a
+random tie-break, which defeats ranking.
+
+\subsection{Hyperband}
+
+Hyperband~\cite{Li:18} answers SH's ``what $n$?'' question by running
+multiple SH brackets, each with a different $(n, b_0)$ trade-off, and
+taking the best winner across brackets. Given the maximum resource per
+candidate $R$, the reduction factor $\eta$, and the number of brackets
+$s_{\max}+1$, each bracket gets its own $n$ and $b_0$. Each bracket
+then runs full SH internally with the bracket's share of the total
+Hyperband budget.
+
+A key cost of Hyperband is that the process is \emph{synchronous}:
+within a bracket, a rung must wait for all candidates to finish before
+ranking and promoting to the next rung. This waiting time inflates
+total wall-clock time, since the slowest candidate sets the pace.
+
+\subsection{Asynchronous SHA (ASHA)}
+
+ASHA~\cite{Li:20} addresses Hyperband's straggler problem with a
+different promotion rule: a candidate is promoted as soon as it ranks
+in the top $1/\eta$ of the candidates that have so far completed its
+current rung. This eliminates the per-rung synchronization barrier.
+
+A consequence of this design is that ranks are computed on
+\emph{partial information}: the early candidates set the bar, and the
+standard becomes more selective as more candidates complete the rung.
+Early-arriving but mediocre candidates can claim quota slots before
+later but better candidates have landed, potentially wasting budget at
+higher rungs.
+
+\subsection{Application to Agent Evolution}
+
+We map the multi-fidelity vocabulary to this thesis as follows: a
+\emph{candidate} is one DGM child, an \emph{arm pull} is one benchmark
+evaluation, the \emph{budget} is the number of tasks evaluated, a
+\emph{rung} is an evaluation stage, $n$ is the number of initial
+children per generation, $\eta$ is the reduction factor, the
+\emph{reward} is the task-level resolved/unresolved outcome, and the
+\emph{best arm} is the best child of the generation.
+
+The mapping is sound because task cost is roughly linear in the number
+of tasks, partial samples correlate with full samples, good mutations
+are rare so reducing wasted evaluations matters, and task evaluations
+are independent.
+
+A few caveats apply. The small budget used in this thesis produces
+coarse scores. The tasks are not homogeneous: SWE-bench tasks differ
+in difficulty, introducing task-selection bias. And the Hyperband
+implementation used here sweeps only one bracket, which is closer to
+plain SH than to full Hyperband.
+
+Two related approaches are out of scope. BOHB combines Hyperband with
+Bayesian model-guided sampling, and PBT mutates hyperparameters online
+across a population. This thesis stays with the SH family because the
+goal is to isolate scheduling, not search-strategy modeling.
 
 \section{SWE-bench and \texttt{swe\_verified\_mini}}
 \label{sec:swebench}
 
-SWE-bench~\cite{Jimenez:24} is a benchmark of real GitHub issues from
-popular Python projects.  Each task provides a problem statement, a base
-commit, and a hidden set of tests that the agent's patch must make pass.
-SWE-bench~Verified is a human-validated 500-task subset; we use a 50-task
-sub-subset, \texttt{swe\_verified\_mini}, which is small enough to run
-multiple full generations within the thesis budget while preserving the
-distribution of task difficulties.
+\subsection{Task Format}
 
-% TODO: describe per-task evaluation pipeline (Docker, conda envs, report.py)
+A SWE-bench task~\cite{Jimenez:24} has the following structure:
+\texttt{instance\_id} (unique key), \texttt{repo} (GitHub repository),
+\texttt{base\_commit} (SHA of the repository state before the fix),
+\texttt{problem\_statement} (natural-language issue text),
+\texttt{hints\_text} (optional comments), \texttt{FAIL\_TO\_PASS} (a
+JSON list of test names that must flip from failing to passing),
+\texttt{PASS\_TO\_PASS} (a JSON list of tests that must stay green),
+\texttt{test\_patch} (the hidden test patch applied at grading time),
+and \texttt{patch} (the gold-standard human fix).
+
+A submission is a single unified \texttt{.patch} file, packaged into
+\texttt{prediction.json}:
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible]
+{
+  "instance_id": "django__django-11790",
+  "model_name_or_path": "<agent>",
+  "model_patch": "diff --git a/django/...\n..."
+}
+\end{lstlisting}
+
+\subsection{Evaluation Pipeline}
+
+Each task runs inside its own Docker container. This isolates the
+environment, ensures reproducibility, applies the patch to a fresh
+checkout each time, enforces resource limits, and keeps parallel
+workers on the same host safe from cross-task interference.
+
+The pipeline first prepares the environment, then applies the
+gold-patch dependencies. The agent writes the model patch, which is
+applied together with the hidden test patch. The harness then runs the
+tests, grades the result by checking the two test classes, writes a
+per-instance report, and finally aggregates all per-instance reports
+into a run-level metric.
+
+The aggregated record contains the resolved instances, the unresolved
+instances, the submitted instances, the empty-patch IDs, and the
+error IDs.
+
+\subsection{SWE-bench Verified and the Mini Subset}
+
+Vanilla SWE-bench contains around 2{,}000 tasks drawn from popular
+Python repositories, but it has a number of known issues:
+underspecified problem statements, mislabeled tests, brittle or flaky
+tests, and environments that cannot be set up reliably.
+
+SWE-bench Verified~\cite{Jimenez:24verified} addresses these issues
+with a human-validated 500-task subset, audited for test correctness
+and problem-statement adequacy.
+
+The benchmark used in this thesis is \texttt{swe\_verified\_mini}, a
+50-task subset of SWE-bench Verified that preserves the repository mix
+proportionally. The size of 50 was chosen to fit the thesis budget
+while preserving the distribution of task difficulties.
+
+\subsection{Metric Definition}
+
+This thesis tracks two metrics. The first is \texttt{accuracy\_score},
+defined as $\mathrm{resolved} / \mathrm{submitted}$. This is the
+DGM-reported metric and excludes empty patches from the denominator.
+The second is the \texttt{honest\_score}, defined as
+$\mathrm{resolved} / \mathrm{total}$, which includes every task the
+agent was asked to solve, including those for which it produced no
+patch.
+
+Both metrics are needed because the two diverge exactly when a model
+emits empty patches: the \texttt{accuracy\_score} denominator drops
+while the \texttt{honest\_score} denominator stays fixed. We observed
+this divergence in practice when running with minimax-m2.5, which
+exploits the metric by emitting empty patches on tasks it cannot
+solve, inflating \texttt{accuracy\_score} while \texttt{honest\_score}
+stays flat. Chapter~\ref{chap:results},
+Section~\ref{sec:results-validity} makes the empirical case that this
+divergence matters and treats it as the first finding of the results
+chapter.
