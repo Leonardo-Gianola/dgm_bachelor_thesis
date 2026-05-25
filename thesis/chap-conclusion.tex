@@ -1,26 +1,58 @@
 \chapter{Conclusion}
 \label{chap:conclusion}
 
-% TODO: rewrite once results are in.
-
 \section{Summary}
 
-We compared four evaluation schedulers --- baseline, Hyperband, ASHA, and a
-blind GA --- as drop-in replacements for the DGM's default sequential
-evaluation policy on \texttt{swe\_verified\_mini}.
+For the conclusion of this work we can answer the research question
+positively: multi-fidelity schedulers can reduce the cost per
+improvement and achieve the same or better results, with some caveats.
+The Genetic Algorithm is the cheapest scheduler to reach a strong
+result, at \$0.71 per accuracy point, \$26 total cost over the run,
+and a peak of 70.59\%. Hyperband produced the best result with the
+highest peak of 75.86\%, but at 73\% higher cost than the comparable
+Genetic Algorithm run. ASHA showed a visible improvement on wall time
+with a reduction of about 32\% over Hyperband, but with a regressing
+trajectory that ends below its own generation~0. The baseline, on the
+other hand, is the only scheduler with a 100\% compile rate, at the
+lowest peak of 59.57\%. All these results are single seed (n=1) and
+descriptive only.
 
 \section{Limitations}
 
 \begin{itemize}
-  \item Each scheduler is run with a single seed and four generations, which
-    bounds the statistical claims we can make about long-horizon evolution.
-  \item Evaluation is confined to a 50-task subset; results may not transfer
-    to the full SWE-bench Verified set.
+  \item The Genetic Algorithm's generation~1 was silently skipped by a
+    \texttt{seed=0} selection bug, leaving only two productive
+    generations.
+  \item The thesis budget allowed only a single seed per scheduler, so
+    no significance test is possible and all results are descriptive.
+  \item Per-generation cost is not tracked, so cost-to-threshold
+    figures use the whole run's cost and overstate the marginal cost
+    of crossing each threshold.
+  \item Evaluation is confined to the 50-task
+    \texttt{swe\_verified\_mini} subset; results may not transfer to
+    the full SWE-bench Verified set.
   \item All experiments use a single LLM
-    (\texttt{openrouter/minimax/minimax-m2.5}); other models may interact
-    differently with multi-fidelity schedules.
+    (\texttt{openrouter/minimax/minimax-m2.5}); other models may
+    interact differently with multi-fidelity schedules.
+  \item ASHA's regressing trajectory may itself be a single-seed fluke
+    and could shift under replication.
+  \item This work introduces a coverage-reliability metric alongside
+    the original resolved/submitted rate; the metric is new and not
+    externally validated, even though it gives a more faithful view of
+    each scheduler's actual exposure.
 \end{itemize}
 
 \section{Future Work}
 
-% TODO: directions enabled by the comparison results.
+\begin{itemize}
+  \item \textbf{Multi-seed replication.} The most important next step
+    is to rerun the four schedulers under several seeds for
+    significance testing and a clearer comparison across schedulers.
+  \item \textbf{Larger benchmarks.} Evaluating the same schedulers on
+    bigger benchmarks would test how the present results change with
+    more tasks and a larger search space.
+  \item \textbf{Stronger language model.} This thesis fixed the LLM to
+    \texttt{minimax-m2.5}; swapping in a more capable model is one of
+    the most promising directions, as the interaction between
+    scheduler and model may shift the ranking observed here.
+\end{itemize}
