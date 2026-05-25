@@ -1,5 +1,202 @@
 \chapter{Appendix}
-\label{appendix:api-doc}
+\label{chap:appendix}
 
-% TODO: include reproduction commands, full per-run metadata tables, and any
-% additional plots that did not fit in Chapter~\ref{chap:results}.
+This appendix collects the reproduction commands and the run-level data
+for the four pilot runs analysed in Chapter~\ref{chap:results}. The aim
+is to make the experiments reproducible end-to-end on a single
+workstation, and to surface the per-generation numbers that did not fit
+the main body.
+
+\section{Reproduction}
+\label{app:reproduction}
+
+The commands below reproduce the four runs from a clean checkout of
+the fork. The environment, the bootstrap, and the four scheduler
+invocations are listed in order; all four runs were executed with
+\texttt{seed=0} and \texttt{generation\_task\_budget\_total=100}, and
+they share the same model and benchmark.
+
+\subsection{Environment Setup}
+
+\begin{lstlisting}[language=bash,caption={Environment setup.}]
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+export OPENAI_API_KEY='...'
+export ANTHROPIC_API_KEY='...'
+docker run hello-world
+\end{lstlisting}
+
+\subsection{Initial Archive Bootstrap}
+
+\begin{lstlisting}[language=bash,caption={Bootstrap the initial archive used by every pilot run.}]
+python test_swebench.py --benchmark swe_verified_mini --full_mini \
+  --agent_dir initial_swe_verified_mini --write_agent_metadata
+\end{lstlisting}
+
+\subsection{Scheduler Run Commands}
+
+\begin{lstlisting}[language=bash,caption={Baseline scheduler.}]
+python DGM_outer.py --scheduler baseline \
+  --max_generation 4 --selfimprove_size 2 --selfimprove_workers 2 \
+  --benchmark swe_verified_mini --generation_task_budget_total 100 \
+  --seed 0
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,caption={Genetic Algorithm scheduler.}]
+python DGM_outer.py --scheduler ga \
+  --max_generation 4 --selfimprove_size 2 --selfimprove_workers 2 \
+  --benchmark swe_verified_mini --generation_task_budget_total 100 \
+  --ga_tournament_k 3 --ga_mutation_temperature 1.0 \
+  --seed 0
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,caption={Hyperband scheduler.}]
+python DGM_outer.py --scheduler hyperband \
+  --max_generation 4 --selfimprove_size 2 --selfimprove_workers 2 \
+  --benchmark swe_verified_mini --generation_task_budget_total 100 \
+  --hyperband_eta 5 --hyperband_budgets 2,10,50 \
+  --hyperband_initial_children 15 \
+  --seed 0
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,caption={ASHA scheduler.}]
+python DGM_outer.py --scheduler asha \
+  --max_generation 4 --selfimprove_size 2 --selfimprove_workers 2 \
+  --benchmark swe_verified_mini --generation_task_budget_total 100 \
+  --hyperband_eta 5 --hyperband_budgets 2,10,50 \
+  --hyperband_initial_children 15 \
+  --seed 0
+\end{lstlisting}
+
+% =====================================================================
+\section{Per-Run Metadata}
+\label{app:run-metadata}
+
+Table~\ref{tab:appendix-run-metadata} lists the run identifier, the
+wall time, and the cost of the four pilot runs, together with the start
+and end timestamps. All runs share the same model, benchmark, and
+initial archive, so only the scheduler-level variables differ across
+rows.
+
+\begin{table}[ht]
+\centering
+\caption{Per-run metadata for the four pilot runs. All runs share
+\texttt{seed=0}, benchmark \texttt{swe\_verified\_mini},
+\texttt{generation\_task\_budget\_total=100}, and the model
+\texttt{openrouter/minimax/minimax-m2.5}. The initial archive is
+identical across runs at 16/47 resolved (34.04\%).}
+\label{tab:appendix-run-metadata}
+\begin{tabular}{llrr}
+\hline
+Scheduler & Run ID & Wall (h) & Cost (\$) \\
+\hline
+Baseline  & \texttt{20260505004943\_827754} &  9.98 & 32.47 \\
+GA        & \texttt{20260513093044\_666042} &  9.63 & 26.00 \\
+Hyperband & \texttt{20260511231317\_229925} & 30.00 & 44.98 \\
+ASHA      & \texttt{20260513201108\_583607} & 20.34 & 39.00 \\
+\hline
+\end{tabular}
+
+\vspace{1ex}
+
+\begin{tabular}{lll}
+\hline
+Scheduler & Started & Ended \\
+\hline
+Baseline  & 2026-05-05 00:49 CEST & 2026-05-05 10:48 CEST \\
+GA        & 2026-05-13 09:30 CEST & 2026-05-13 19:08 CEST \\
+Hyperband & 2026-05-11 23:13 CEST & 2026-05-13 05:14 CEST \\
+ASHA      & 2026-05-13 20:11 CEST & 2026-05-14 16:31 CEST \\
+\hline
+\end{tabular}
+\end{table}
+
+% =====================================================================
+\section{Per-Generation Detail}
+\label{app:per-gen-detail}
+
+The four tables below give the per-generation count of children
+generated, compiled, and evaluated, together with the evaluation
+budget consumed, the archive size after the generation closes, and the
+rung-aligned \texttt{best\_child\_score} recorded in
+\texttt{dgm\_metadata.jsonl}. Raw \emph{Best} values of 1.000
+correspond to rung-0 single-task evaluations and should be read
+alongside the rung-0 fluke caveat in
+Section~\ref{sec:results-validity}.
+
+\begin{table}[ht]
+\centering
+\caption{Baseline per-generation summary. \emph{Children} is the count
+of generated child agents that generation; \emph{Compiled} passes the
+argparse guard; \emph{Evaluated} completes the final rung;
+\emph{Tasks} is the SWE-bench evaluation budget consumed;
+\emph{Archive} is the archive size after the generation closes;
+\emph{Best} is the rung-aligned \texttt{best\_child\_score} recorded
+in \texttt{dgm\_metadata.jsonl}.}
+\label{tab:appendix-baseline}
+\begin{tabular}{rrrrrrr}
+\hline
+Gen & Children & Compiled & Evaluated & Tasks & Archive & Best \\
+\hline
+0 & 2 & 2 & 1 &  53 & 3 & 1.000 \\
+1 & 1 & 1 & 1 &  50 & 4 & 0.576 \\
+2 & 2 & 2 & 2 & 100 & 6 & 0.562 \\
+3 & 1 & 1 & 1 &  50 & 7 & 0.625 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Genetic Algorithm per-generation summary. Generation~1 produced
+zero children because of the \texttt{seed=0} selection bug
+(Section~\ref{sec:results-validity}); the gen-0 \emph{Best} of 1.000 is
+a rung-0 single-task fluke.}
+\label{tab:appendix-ga}
+\begin{tabular}{rrrrrrr}
+\hline
+Gen & Children & Compiled & Evaluated & Tasks & Archive & Best \\
+\hline
+0 & 2 & 1 & 0 &  6 & 2 & 1.000 \\
+1 & 0 & 0 & 0 &  0 & 2 & 0.000 \\
+2 & 2 & 1 & 0 & 53 & 3 & 0.750 \\
+3 & 1 & 1 & 1 & 50 & 4 & 0.720 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Hyperband per-generation summary. Raw \emph{Best} values of
+1.000 reflect rung-0 single-task evaluations rather than full-rung
+accuracy (Section~\ref{sec:results-validity}).}
+\label{tab:appendix-hyperband}
+\begin{tabular}{rrrrrrr}
+\hline
+Gen & Children & Compiled & Evaluated & Tasks & Archive & Best \\
+\hline
+0 & 15 & 11 & 1 & 94 & 2 & 0.750 \\
+1 & 15 & 12 & 0 & 94 & 3 & 1.000 \\
+2 & 14 &  7 & 0 & 92 & 4 & 1.000 \\
+3 & 10 &  8 & 0 & 76 & 5 & 1.000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{ASHA per-generation summary. Raw \emph{Best} values of 1.000
+reflect rung-0 single-task evaluations
+(Section~\ref{sec:results-validity}).}
+\label{tab:appendix-asha}
+\begin{tabular}{rrrrrrr}
+\hline
+Gen & Children & Compiled & Evaluated & Tasks & Archive & Best \\
+\hline
+0 & 15 & 12 & 0 & 88 & 2 & 1.000 \\
+1 & 15 & 11 & 1 & 86 & 3 & 1.000 \\
+2 & 15 & 12 & 1 & 88 & 4 & 1.000 \\
+3 & 15 & 10 & 1 & 84 & 5 & 1.000 \\
+\hline
+\end{tabular}
+\end{table}
