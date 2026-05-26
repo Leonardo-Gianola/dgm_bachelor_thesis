@@ -22,8 +22,8 @@ Section~\ref{sec:threats} discusses threats to validity.
 Baseline is the base configuration of the system and is used as the
 reference scheduler. It evaluates each child through a fixed three-stage
 pipeline of cumulative task counts, killing candidates between stages
-on a fixed threshold at rung~0 and an archive-relative threshold at
-rung~1. The promotion mechanism of this scheduler is based on three
+on a fixed threshold at stage~0 and an archive-relative threshold at
+stage~1. The promotion mechanism of this scheduler is based on three
 stages: small (3 tasks), medium (12 tasks), and full (35 tasks), for a
 total of 50 tasks per fully-evaluated child. To pass from the small to
 the medium stage, the child must resolve at least 40\% of the
@@ -264,7 +264,7 @@ Aggregated cost, wall-clock, final archive composition, and
 best-of-run score per scheduler are reported in
 Chapter~\ref{chap:results}, Section~\ref{sec:results-summary}. The best-of-run score is
 defined as $\max(\texttt{best\_child\_score})$ across the four
-generations of a scheduler's run --- that is, the best child produced
+generations of a scheduler's run that is, the best child produced
 at any point in the run. Per-generation
 trajectories appear in Section~\ref{sec:results-accuracy}. The
 cost-vs-score comparison, which is the central result for the research

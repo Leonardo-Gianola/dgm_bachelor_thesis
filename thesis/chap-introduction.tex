@@ -19,9 +19,10 @@ into evaluation, and that is where this thesis intervenes.
 Evaluation is the chokepoint. Each candidate child is executed against a
 benchmark of real GitHub issues inside Docker, which is slow (minutes
 per task) and monetarily expensive (paid LLM API calls plus container
-overhead). Most generated children fail to compile, regress relative to
-the parent, or change behaviour only on a subset of the benchmark.
-Spending more than the necessary task budget on a bad child is wasteful.
+overhead). Most generated children create negative modifications to
+their own code, and this can be observed on a subset of the benchmark,
+in the first tasks the agent is fed. Spending more than the necessary
+task budget on a bad child is wasteful.
 The Darwin G{\"o}del Machine ships with a fixed three-stage evaluation
 pipeline (small, medium, and full), which this thesis treats as the
 baseline scheduler. It is a partial mitigation, but blind: it uses
@@ -40,7 +41,7 @@ accuracy of the evolved agents?}
 To answer this, we implement and compare four schedulers: a sequential
 baseline, Hyperband~\cite{Li:18}, ASHA~\cite{Li:20}, and a blind genetic
 algorithm. All four schedulers share the same model
-(\texttt{openrouter/minimax/minimax-m2.5}), benchmark
+(\texttt{minimax-m2.5}), benchmark
 (\texttt{swe\_verified\_mini}, a 50-task subset of SWE-bench
 Verified~\cite{Jimenez:24}), initial archive, and seed. The scheduler is
 the only independent variable.

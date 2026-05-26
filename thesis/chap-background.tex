@@ -26,7 +26,7 @@ rewrite must satisfy to be committed: a rewrite is committed only when
 the system derives, in a fixed axiomatic system, that the rewrite
 increases expected lifetime utility.
 
-The big problem with this idea is that it is not practical. Real
+The key limitation of this idea is that it is not practical. Real
 scenarios carry a formalization burden, the axioms are hard to define,
 and unbounded proof search means a system cannot terminate in finite
 time. As a result, no G{\"o}del Machine has ever modified itself on a
@@ -36,19 +36,24 @@ The Darwin G{\"o}del Machine~\cite{Sakana:25} replaces ``prove
 beneficial'' with ``measure beneficial on a benchmark''. This turns the
 machine into an evolutionary search, with a number of evolution-inspired
 ideas: an archive of variants, LLM-driven mutations, and fitness from
-SWE-bench.
+SWE-bench. This relaxes the G{\"o}del Machine's impractical requirement
+of theoretically proving that a change will improve the system, instead
+requiring empirical evidence from experiments to demonstrate that a
+proposed new version enhances performance.
 
 \subsection{The DGM Loop}
 
 To explain the DGM loop we first define what an agent is. An agent is a
 directory of Python source code. It is not weights, not a prompt, not a
 model checkpoint. The search is therefore over Python code that
-orchestrates a frozen LLM, and the identity of an agent is a git commit
-of its agent directory.
+orchestrates a frozen pretrained foundation model, and the identity of
+an agent is a git commit of its agent directory.
 
 The loop starts with \emph{parent selection}. By default the parent is
 sampled based on its accuracy score (read from the run metadata) and
-an entry, which is the target weakness the child must address.
+a \emph{target entry}, which is the specific weakness the child must
+address (described in detail in the Targeted Self-Improvement
+subsection below).
 \emph{Child generation} then asks the parent to modify its own source
 directory in a three-step LLM call. First, \emph{diagnosis}: the LLM
 reads the parent log and proposes possible improvements. Second,
@@ -130,7 +135,8 @@ self-improvement task into a specific synthetic GitHub issue.
 Four target types exist: \texttt{solve\_empty\_patches} (fix the agent
 producing no patch at all), \texttt{solve\_stochasticity} (address the
 LLM being unreliable on first try), \texttt{solve\_contextlength} (the
-input exceeds the token limit and produces a 400 error), and a
+prompt exceeds the model's context window, causing the API to return a
+400 error), and a
 per-task \texttt{<instance\_id>} target (fix one specific failed
 SWE-bench instance).
 
@@ -164,6 +170,13 @@ setting.
 
 \subsection{The Core Idea}
 
+We define \emph{fidelity} as the knob trading evaluation accuracy
+against evaluation cost. Low fidelity levels are cheap but yield a
+noisy estimate of the true quality. High fidelity levels are
+significantly more expensive but yield a low-noise estimate. A
+multi-fidelity scheduler spends low-fidelity budget on many candidates,
+then commits high-fidelity budget only to survivors.
+
 Partial evaluation at a cheap budget is correlated enough with the
 full-budget score that ranking on the partial signal lets us discard
 the bottom fraction without losing the eventual winner; full cost is
@@ -176,9 +189,13 @@ The multi-armed bandit idea goes back to Robbins
 and the goal is to pick the best with as few pulls as possible. The
 Best Arm Identification (BAI) branch~\cite{Karnin:13} minimizes the
 pulls needed to find the winner rather than maximizing the reward
-accumulated along the way. Within BAI, the \emph{fixed-budget} variant
-spends $T$ pulls total and tries to maximize the probability of
-returning the correct best arm.
+accumulated along the way. Within BAI two variants exist: the
+\emph{fixed-confidence} variant minimizes the number of pulls required
+to reach a target confidence in the chosen arm, while the
+\emph{fixed-budget} variant spends $T$ pulls total and tries to
+maximize the probability of returning the correct best arm. This
+thesis operates in the fixed-budget regime: each generation has a
+fixed evaluation budget and the question is which child to crown.
 
 Karnin et al.~\cite{Karnin:13} proved that Successive Halving comes
 close to the minimal number of pulls required to solve the BAI problem,
@@ -198,8 +215,8 @@ $n$, the reduction factor $\eta$, an ascending budget per rung
 $b_0 < b_1 < \dots < b_{s_{\max}}$, and the rung count $s_{\max}$. The
 algorithm starts $n$ candidates at $b_0$, ranks them by score, keeps
 the top $n_1 = n / \eta$, re-runs the survivors at $b_1$, ranks again,
-keeps the top $n_2 = n_1 / \eta$, and continues until reaching
-$b_{s_{\max}}$. The final survivors are the
+keeps the top $n_2 = n_1 / \eta$, and continues until reaching the
+maximum budget $b_{s_{\max}}$. The final survivors are the
 winners~\cite{Jamieson:16}.
 
 The limitations of SH are that $n$ and the budget schedule must be
@@ -242,8 +259,8 @@ higher rungs.
 \subsection{Application to Agent Evolution}
 
 We map the multi-fidelity vocabulary to this thesis as follows: a
-\emph{candidate} is one DGM child, an \emph{arm pull} is one benchmark
-evaluation, the \emph{budget} is the number of tasks evaluated, a
+\emph{candidate} is one DGM child, an \emph{arm pull} is one task, the
+\emph{budget} is the group of tasks the child is evaluated on, a
 \emph{rung} is an evaluation stage, $n$ is the number of initial
 children per generation, $\eta$ is the reduction factor, the
 \emph{reward} is the task-level resolved/unresolved outcome, and the
@@ -339,9 +356,10 @@ Both metrics are needed because the two diverge exactly when a model
 emits empty patches: the \texttt{accuracy\_score} denominator drops
 while the \texttt{honest\_score} denominator stays fixed. We observed
 this divergence in practice when running with minimax-m2.5, which
-exploits the metric by emitting empty patches on tasks it cannot
-solve, inflating \texttt{accuracy\_score} while \texttt{honest\_score}
-stays flat. Chapter~\ref{chap:results},
+produces empty patches on tasks it cannot solve. Under
+denominator-excludes-empties accounting these empties are dropped from
+the score, inflating \texttt{accuracy\_score} while
+\texttt{honest\_score}, which counts them as failures, stays flat. Chapter~\ref{chap:results},
 Section~\ref{sec:results-validity} makes the empirical case that this
 divergence matters and treats it as the first finding of the results
 chapter.
