@@ -8,17 +8,40 @@
 \usepackage{listings} %for source code snippets
 \usepackage{textcomp} %for upquote
 \usepackage{xcolor} % nice colors (for source code)
+\usepackage{microtype} % subtle font expansion/protrusion to reduce overfull boxes
 
 \renewcommand{\ttdefault}{pcr} % nicer font for source code
 
+% Allow LaTeX more slack when breaking paragraphs to avoid overfull lines.
+\setlength{\emergencystretch}{3em}
+\tolerance=2000
+
+% Discretionary break helper: inserts an allowed line-break point.
+% Use inside long inline literals, e.g. \texttt{--hyperband\bk\_initial\bk\_children}
+\newcommand{\bk}{\discretionary{}{}{}}
+
+% Enable hyphenation inside \texttt{}: long identifiers like
+% --hyperband_initial_children can then break across lines.
+\makeatletter
+\DeclareRobustCommand\ttfamily
+        {\not@math@alphabet\ttfamily\mathtt
+         \fontfamily\ttdefault\selectfont
+         \hyphenchar\font=`\-\relax}
+\makeatother
+
 % an example configuration of the 'listings' package
-\lstset{basicstyle=\ttfamily, 
+\lstset{basicstyle=\ttfamily\small,
         keywordstyle=\color{purple}\ttfamily,
         commentstyle=\color{gray}\ttfamily,
         stringstyle=\color{orange}\ttfamily,
         captionpos=b,
         float=tb,
         upquote=true,
+        breaklines=true,
+        breakatwhitespace=true,
+        breakindent=2em,
+        columns=fullflexible,
+        postbreak=\mbox{\textcolor{gray}{$\hookrightarrow$}\space},
 }
 
 \chapterstyle{tandh} % configuration of the 'memoir' class

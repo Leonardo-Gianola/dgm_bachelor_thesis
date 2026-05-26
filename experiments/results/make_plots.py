@@ -87,14 +87,24 @@ def save(fig, name):
 # Fig 1 — cost vs best-of-run peak  (central [N.3] figure)
 # ---------------------------------------------------------------------------
 def fig_cost_vs_peak():
+    # Per-scheduler annotation offset (points) and alignment so labels
+    # never overlap each other or the initial-archive guideline.
+    ANNOT = {
+        "baseline":  {"xytext": (10,  6), "ha": "left",  "va": "bottom"},
+        "ga":        {"xytext": (10, -4), "ha": "left",  "va": "top"},
+        "hyperband": {"xytext": (-10, 0), "ha": "right", "va": "center"},
+        "asha":      {"xytext": (10, -6), "ha": "left",  "va": "top"},
+    }
     fig, ax = plt.subplots(figsize=(6, 4.2))
     for s in SCHED:
         ax.scatter(COST[s], PEAK[s], s=140, color=COLOR[s],
                    edgecolor="black", linewidth=0.6, zorder=3)
+        a = ANNOT[s]
         ax.annotate(f"{LABEL[s]}\n\\${COST[s]:.0f}, {PEAK[s]:.1f}%, "
                     f"\\${dollars_per_pp(s):.2f}/pp",
                     (COST[s], PEAK[s]), textcoords="offset points",
-                    xytext=(8, 8), fontsize=8.5)
+                    xytext=a["xytext"], ha=a["ha"], va=a["va"],
+                    fontsize=8.5)
     ax.axhline(INITIAL_ACC, ls="--", c="gray", lw=0.9)
     ax.text(ax.get_xlim()[1], INITIAL_ACC + 0.6,
             f"initial archive {INITIAL_ACC:.2f}%", ha="right",
@@ -103,6 +113,8 @@ def fig_cost_vs_peak():
     ax.set_ylabel("Best-of-run accuracy (resolved/submitted, %)")
     ax.set_title("Cost vs. peak accuracy (n=1; lower-right = better value)")
     ax.grid(True, ls=":", alpha=0.5)
+    # Margin so left/top annotations are not clipped by axes.
+    ax.margins(x=0.12, y=0.10)
     save(fig, "fig_cost_vs_peak.pdf")
 
 

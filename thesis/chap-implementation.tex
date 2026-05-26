@@ -24,14 +24,13 @@ the original repo:
     \texttt{--generation\_task\_budget\_total} CLI argument
     (\texttt{DGM\_outer.py:277}, default \texttt{None}; the value
     \texttt{100} used in the experiments is a run-time flag, not a code
-    default). The last changes were general bug fixes.
+    default).
   \item \textbf{\texttt{self\_improve\_step.py}}: four big changes. Added
     support for the OpenRouter API key and new models; added the new
     benchmark switch, scheduler budget/metrics, and the GA mutation hook;
     wired the argparse guard. (Note: the Docker repo-copy and container
     git-config fixes are \emph{called} from here but live in
-    \texttt{utils/docker\_utils.py}, see Section~\ref{sec:guards}.) Last,
-    fixed bugs introduced by these changes.
+    \texttt{utils/docker\_utils.py}, see Section~\ref{sec:guards}.).
   \item \textbf{\texttt{coding\_agent.py}}: scheduler budget and metrics;
     the empty-patch retry loop (Section~\ref{sec:guards}).
   \item \textbf{\texttt{llm.py}}: the base LLM caller layer. Added the
@@ -134,13 +133,13 @@ no-loop implementation with three sequential eval blocks; a
 \texttt{consumed\_budget} accumulator increments after each block by
 number of children $\times$ stage size.
 
-The rung structure is: \textbf{Rung 0 (small)} evaluates all children,
+The stage structure is: \textbf{Stage 0 (small)} evaluates all children,
 promoting those that resolve at least 40\% of small-stage tasks;
-\textbf{Rung 1 (medium)} takes the Rung-0 survivors and promotes those
+\textbf{Stage 1 (medium)} takes the Stage-0 survivors and promotes those
 whose score is greater than or equal to the full-evaluation threshold;
-\textbf{Rung 2 (full)} takes the remaining children, evaluates them on the
+\textbf{Stage 2 (full)} takes the remaining children, evaluates them on the
 full suite, and keeps all of them. Every stage promotion has two steps:
-(a) a quality gate filtered by the threshold (Rungs 0 and 1), then (b) a
+(a) a quality gate filtered by the threshold (Stages 0 and 1), then (b) a
 budget cap that takes the max number of promotions equal to remaining
 budget divided by next-stage size, keeping the top-k ranked. The gate
 selects eligible candidates; the budget cap then trims. All scheduler
@@ -150,21 +149,21 @@ metadata is saved via \texttt{finalize\_child\_metadata} per child.
 run_generation(entries, full_eval_threshold):
     children = _generate_children(entries)
 
-    # Rung 0 -- small
+    # Stage 0 -- small
     _evaluate_children(children, small_issues, rung=0)
     consumed += len(children) * len(small_issues)
     s1 = [c for c in children if resolved(c) >= 0.4 * len(small_issues)]
     s1 = _promote_top_k(s1, remaining_budget // len(medium_issues))   # budget cap
     _mark_promotion_decisions(children, s1, 0)
 
-    # Rung 1 -- medium
+    # Stage 1 -- medium
     _evaluate_children(s1, medium_issues, rung=1)
     consumed += len(s1) * len(medium_issues)
     s2 = [c for c in s1 if score(c) >= full_eval_threshold]
     s2 = _promote_top_k(s2, remaining_budget // len(final_issues))
     _mark_promotion_decisions(s1, s2, 1)
 
-    # Rung 2 -- full (keep all)
+    # Stage 2 -- full (keep all)
     _evaluate_children(s2, final_issues, rung=2)
     consumed += len(s2) * len(final_issues)
 
@@ -194,7 +193,7 @@ generation: it shuffles the task list with a seed so all children get the
 same shuffle in a generation, then cuts the shuffled list into chunks, one
 per rung. One implementation detail worth noting: each chunk holds
 \emph{different} tasks, so a child at rung~1 is tested only on tasks
-3--10, not tasks 1--10. This is a slight deviation from textbook
+3 to 10, not tasks 1 to 10. This is a slight deviation from textbook
 Hyperband.
 
 \texttt{run\_generation} is implemented for the SWE-bench benchmark only.
@@ -328,7 +327,7 @@ class GAScheduler(BaselineScheduler):
             blind_mutation=True,                          # force blind
             mutation_temperature=self.mutation_temperature)
 
-    # run_generation / rung logic: inherited unchanged from BaselineScheduler
+    # run_generation / stage logic: inherited unchanged from BaselineScheduler
 \end{lstlisting}
 
 \section{Operational Guards}
@@ -347,7 +346,7 @@ flag the evaluation drivers pass: \texttt{--problem\_statement},
 \texttt{--base\_commit}, \texttt{--outdir}, \texttt{--test\_description},
 \texttt{--self\_improve}, plus \texttt{--instance\_id} for SWE-style
 benchmarks or \texttt{--language} for polyglot. If the help invocation
-does not exits, or any required flag is absent, the child is marked
+does not exit, or any required flag is absent, the child is marked
 \texttt{model\_patch\_notempty = False} with a
 \texttt{compile\_failure\_reason}, its \texttt{budget\_history} is
 emptied, and it is excluded from evaluation. This prevents a

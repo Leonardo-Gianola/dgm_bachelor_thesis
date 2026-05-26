@@ -26,7 +26,7 @@ evaluation runs the child on as few as 1 to 3 tasks, and DGM's native
 per-generation selector picks \texttt{best\_child\_score} from
 \texttt{dgm\_metadata.jsonl}. A child that resolves 1 of 1 tasks
 therefore scores 100\%, which looks optimal but is a sampling
-artifact. The evidence is how often Hyperband and ASHA register raw
+artefact. The evidence is how often Hyperband and ASHA register raw
 100\% rates at rung~0.
 
 To report unaltered, comparable results we use the final-rung accuracy
@@ -69,6 +69,7 @@ final-rung resolved/submitted rate; the generation it occurred in is in
 parentheses. ``$\Delta$pp'' is best-of-run minus the 34.04\% initial
 archive. ``\$/pp'' is total cost divided by $\Delta$pp.}
 \label{tab:results-aggregate}
+\setlength{\tabcolsep}{4pt}
 \begin{tabular}{lrrrrrr}
 \hline
 Scheduler & Cost (\$) & Wall (h) & Children & Compile & Archive
@@ -99,10 +100,14 @@ ASHA      & +31.81 & 1.23 & 4/4 \\
 \section{Cost-Efficiency}
 \label{sec:results-costscore}
 
-Per-generation cost is not tracked; only run-total cost exists. ``Cost to
-reach threshold X'' therefore means the total cost of the run whose peak
-clears X, not the marginal cost of first crossing X, so the figure
-overstates the true marginal cost to threshold.
+Per-generation cost is not tracked; only run-total cost exists.
+``Cost to reach threshold X'' therefore means the total cost of the
+run whose peak clears X, not the cost paid up to the generation that
+first crossed X. Concretely, if a run cleared X at generation~2 but
+continued through generation~3, the figure still charges the whole
+run, including the post-crossing generations that did not contribute
+to clearing X. The reported number is an upper bound on the
+early-stopping cost to threshold.
 
 This section answers the central research question: which scheduler buys
 the most accuracy per dollar. The Genetic Algorithm is the most efficient,
@@ -119,9 +124,9 @@ at a steep premium.
 \begin{table}[ht]
 \centering
 \caption{Cheapest scheduler whose best-of-run clears each accuracy
-threshold, and the total run cost paid to get there. Per-generation cost
-is not tracked, so the figure is the whole run's cost, not the marginal
-cost of first crossing the threshold.}
+threshold, and the total run cost paid to get there. Per-generation
+cost is not tracked, so the figure is the whole run's cost, not the
+cost paid up to the generation that first crossed the threshold.}
 \label{tab:results-threshold}
 \begin{tabular}{llrr}
 \hline
@@ -157,8 +162,9 @@ GA dominates up to its 70.59\% ceiling; only Hyperband clears 75\%, at
 \section{Per-Generation Trajectories}
 \label{sec:results-accuracy}
 
-This shows the per-generation best promoted child at the final rung, with
-empty patches excluded. The baseline rises slowly and monotonically,
+This shows the per-generation best promoted child at the final rung,
+where the rate is resolved/submitted with empties counted in the
+denominator. The baseline rises slowly and monotonically,
 plateauing across generations~1 and~2 (both 54.17\%) before a
 generation-3 breakthrough, a gain of 25.5~pp over the initial archive. The
 Genetic Algorithm lost its first two generations to different causes.
@@ -178,9 +184,9 @@ Hyperband sustained that trajectory.
 \centering
 \includegraphics[width=.85\textwidth]{../experiments/results/fig_accuracy_per_gen}
 \caption{Best promoted child accuracy per generation (final-rung
-resolved/submitted, empty patches excluded). GA generation~0 is marked
-separately as a single-task rung-0 fluke; GA generation~1 was skipped by a
-seed=0 selection bug.}
+resolved/submitted, empties counted in the denominator). GA
+generation~0 is marked separately as a single-task rung-0 fluke; GA
+generation~1 was skipped by a seed=0 selection bug.}
 \label{fig:accuracy-per-gen}
 \end{figure}
 
@@ -218,8 +224,8 @@ at 60\%. The argparse guard catches broken children before evaluation,
 reducing budget waste. In evaluation tasks spent
 (Table~\ref{tab:results-workload}, Figure~\ref{fig:eval-tasks}), ASHA
 spends the most under both readings (346~planned, 368~actual).
-Hyperband planned 324 tasks but child kills brought its actual exposure
-to 250, close to the baseline's 324. GA is consistently the lightest at
+Hyperband planned 324 tasks but child kills brought its actual
+exposure to 250, close to the baseline's intended 253. GA is consistently the lightest at
 roughly 100~tasks under either reading. For promotion, under 8\% of
 Hyperband and
 ASHA children reached the final rung, against 83\% for the baseline. This
@@ -269,18 +275,66 @@ The second mechanism deflates \emph{actual} below \emph{intended}:
 tasks where the agent produces no output at all (context-overflow
 crashes on minimax-m2.5, docker timeouts) yield no prediction file and
 drop from \texttt{submitted\_instances} entirely. Hyperband's wide
-rung-0 sweep over 57 children amplifies this: 15 children produced
+rung-0 sweep over 54 children amplifies this: 15 children produced
 fewer predictions than their final-rung plan, against only 3 with
 stage overlap, leaving a net 74-task deficit (intended~324,
 actual~250). GA shows the same pattern in miniature ($-12$) on its
 low-compile-rate population.
 
-The headline accuracy in this chapter remains
-resolved/submitted, that is, resolved per task the agent actually
-attempted. Under that frame the four runs are compared on equal terms
-within each child's realised attempts, and the
-planning-versus-realisation gap is a separate measurement of
-\emph{coverage reliability}, reported alongside the accuracy but not
+Table~\ref{tab:results-coverage} reports the best-of-run number
+under both metrics side by side. The DGM-reported
+\texttt{accuracy\_score} ranks Hyperband first (75.86\%) and Baseline
+last (59.57\%), while \texttt{coverage\_rate} flips the order:
+Baseline first (56.00\%), Hyperband last (44.00\%). The two
+disagree because Hyperband's best child only emitted 29 of 50
+prediction files (21 silent drops), whereas Baseline's best emitted
+47 of 50, so Baseline pays the no-file penalty far less.
+
+\begin{table}[ht]
+\centering
+\caption{Best-of-run rates under both metrics.
+\texttt{accuracy\_score} = resolved/submitted is the DGM-reported
+figure; the denominator only counts tasks for which the agent emitted
+a prediction file. \texttt{coverage\_rate} = resolved/total, with
+total = 50 (the full \texttt{swe\_verified\_mini} set), so silently
+dropped tasks (no-file crashes, docker timeouts) count as failures.}
+\label{tab:results-coverage}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrr}
+\hline
+Scheduler & Resolved & Submitted &
+\texttt{accuracy\_score} & \texttt{coverage\_rate} \\
+\hline
+Baseline  & 28 & 47 & 59.57\% & 56.00\% \\
+GA        & 24 & 34 & 70.59\% & 48.00\% \\
+Hyperband & 22 & 29 & 75.86\% & 44.00\% \\
+ASHA      & 27 & 41 & 65.85\% & 54.00\% \\
+\hline
+\end{tabular}
+\end{table}
+
+Each gap below 50 in the \emph{Submitted} column of
+Table~\ref{tab:results-coverage} is a task for which the agent emitted
+no \texttt{prediction.json} file at all. Three causes contribute, in
+roughly decreasing order of frequency: minimax-m2.5 context-overflow
+crashes on the harder repositories (Django, sympy), where the model
+exceeds the input-token limit mid-solve and the agent loop terminates
+without writing a patch; docker or harness exceptions inside
+\texttt{harness.py} that abort the container before
+\texttt{out\bk\_fname.write\bk\_text(...)} runs; and aggressive
+mutations that break the agent itself, so it crashes on tasks where a
+working agent would have at least produced an empty patch. Baseline
+sits at $47/50$ because its error-log-guided mutations only edit
+narrowly around past failures, leaving the agent runnable. Hyperband
+and ASHA spawn fifteen children per generation with wider mutations,
+so more children damage the agent and more tasks silently drop.
+
+The headline accuracy in this chapter remains resolved/submitted,
+that is, resolved per task the agent actually attempted. Under that
+frame the four runs are compared on equal terms within each child's
+realised attempts, and the planning-versus-realisation gap is a
+separate measurement of \emph{coverage reliability}, reported in
+Table~\ref{tab:results-coverage} alongside the accuracy but not
 folded into it.
 
 \begin{figure}[ht]
@@ -319,3 +373,23 @@ tradeoff. The baseline is the only fully reliable scheduler (100\%
 compile) but the lowest-peaking and most predictable. Every claim above is
 bounded by n=1, no significance is possible at a single seed, and a
 multi-seed re-run is left to future work.
+
+\paragraph{On the choice of primary metric.}
+This thesis keeps \texttt{accuracy\_score} as the headline because it
+is the DGM-reported figure and is directly comparable to prior DGM and
+SWE-bench Verified results obtained with stronger base models such as
+Claude and GPT. Switching to \texttt{coverage\_rate} as the primary
+ranking would break that line of comparison. The cost is that, under
+minimax-m2.5, \texttt{accuracy\_score} silently rewards schedulers
+whose children crash often: each silent no-file drop shrinks the
+denominator instead of counting as a failure, and the more aggressive
+the mutation, the larger the bias. Hyperband's headline lead
+(75.86\%) is partly a denominator artefact of this kind, since its
+best child emitted only 29 of 50 prediction files.
+\texttt{coverage\_rate} reports the same four runs without that bias
+(Table~\ref{tab:results-coverage}) and reverses the ranking, putting
+Baseline first (56.00\%) and Hyperband last (44.00\%). On
+minimax-m2.5, this is the more honest reading of the
+scheduler-versus-scheduler comparison made in this thesis; on a
+stronger base model with negligible crash rate the two metrics would
+converge and the bias would disappear.

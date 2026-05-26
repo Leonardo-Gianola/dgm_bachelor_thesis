@@ -3,7 +3,8 @@
 
 Language models have become capable enough at programming that they are
 now packaged as autonomous coding agents, programs that have a goal, use
-tools like searching and editing files, run tests, and iterate.
+tools like searching and editing files, run tests, and iterate in a
+reason-act loop~\cite{Yao:23}.
 SWE-bench~\cite{Jimenez:24} provides a standard testbed of real GitHub
 issues for evaluating such agents. The Darwin G{\"o}del
 Machine~\cite{Sakana:25} uses this idea to build a system that lets a
@@ -39,9 +40,9 @@ accuracy of the evolved agents?}
 \end{quote}
 
 To answer this, we implement and compare four schedulers: a sequential
-baseline, Hyperband~\cite{Li:18}, ASHA~\cite{Li:20}, and a blind genetic
-algorithm. All four schedulers share the same model
-(\texttt{minimax-m2.5}), benchmark
+baseline, Hyperband~\cite{Li:18}, ASHA~\cite{Li:20}, and a blind
+genetic algorithm~\cite{Holland:75}. All four schedulers share the
+same model (\texttt{minimax-m2.5}~\cite{MiniMax:25}), benchmark
 (\texttt{swe\_verified\_mini}, a 50-task subset of SWE-bench
 Verified~\cite{Jimenez:24}), initial archive, and seed. The scheduler is
 the only independent variable.

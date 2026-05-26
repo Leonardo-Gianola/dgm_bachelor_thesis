@@ -82,14 +82,16 @@ ASHA continues processing further completions. As soon as a worker slot
 frees, the next pending candidate is dispatched, minimising idle time
 relative to synchronous Hyperband.
 
-ASHA reuses Hyperband's parameters: \texttt{--hyperband\_eta},
-\texttt{--hyperband\_budgets}, \texttt{--hyperband\_initial\_children}.
-It extends Hyperband by removing the per-rung synchronisation barrier.
+ASHA reuses Hyperband's parameters
+(\texttt{--hyperband\bk\_eta}, \texttt{--hyperband\bk\_budgets},
+\texttt{--hyperband\bk\_initial\bk\_children}), extending Hyperband
+by removing the per-rung synchronisation barrier.
 
 \paragraph{Genetic Algorithm (GA).}
-The Genetic Algorithm (GA) scheduler is a blind-evolution control: it
-preserves DGM's three-stage Baseline evaluation pipeline but strips
-error-log context from child generation. It is used to test whether
+The Genetic Algorithm (GA) scheduler~\cite{Holland:75} is a
+blind-evolution control: it preserves DGM's three-stage Baseline
+evaluation pipeline but strips error-log context from child
+generation. It is used to test whether
 DGM's gains come from error-log-guided self-diagnosis or from random
 mutations followed by selection. Promotion works exactly the same as
 Baseline; the only difference is in child generation, which uses a
@@ -97,8 +99,8 @@ high-temperature LLM mutation with no error-log context.
 
 GA-run-specific parameters: \texttt{--ga\_mutation\_temperature}
 controls the LLM sampling temperature for blind mutations;
-\texttt{--ga\_tournament\_k} controls the tournament size at parent
-selection (activated by setting
+\texttt{--ga\_tournament\_k} controls the tournament
+size~\cite{Miller:95} at parent selection (activated by setting
 \texttt{--choose\_selfimproves\_method tournament} in
 \texttt{DGM\_outer.py}).
 
@@ -116,18 +118,20 @@ All other variables are held constant:
   \item \textbf{Benchmark}: \texttt{swe\_verified\_mini} (a 50-task
     subset of SWE-bench Verified).
   \item \textbf{Initial archive}: bootstrapped with
-    \texttt{test\_swebench.py --benchmark swe\_verified\_mini
-    --full\_mini} into \texttt{initial\_swe\_verified\_mini/}.
+    \texttt{test\bk\_swebench.py} on
+    \texttt{swe\bk\_verified\bk\_mini} into
+    \texttt{initial\bk\_swe\bk\_verified\bk\_mini/}.
   \item \textbf{Random seed}: \texttt{0}.
   \item \textbf{Generations per run}: \texttt{4}
     (\texttt{--max\_generation 4}).
   \item \textbf{Children per generation}: \texttt{2}
-    (\texttt{--selfimprove\_size 2}) for Baseline and GA; Hyperband and
-    ASHA spawn \texttt{--hyperband\_initial\_children 15} instead.
+    (\texttt{--selfimprove\bk\_size 2}) for Baseline and GA;
+    Hyperband and ASHA spawn \texttt{15} instead
+    (\texttt{--hyperband\bk\_initial\bk\_children 15}).
   \item \textbf{Per-generation task budget cap}: \texttt{100}
-    (\texttt{--generation\_task\_budget\_total 100}).
+    (\texttt{--generation\bk\_task\bk\_budget\bk\_total 100}).
   \item \textbf{Archive update policy}: \texttt{keep\_all}
-    (\texttt{--update\_archive keep\_all}).
+    (\texttt{--update\bk\_archive keep\bk\_all}).
   \item \textbf{Benchmark evaluations per child}: \texttt{1}
     (\texttt{--num\_benchmark\_evals 1}).
   \item \textbf{Evaluation noise leeway}: \texttt{0.1}
@@ -161,34 +165,35 @@ The other three schedulers use identical flags with
 
 The metrics fall into two groups: per-child (recorded in each child's
 \texttt{metadata.json}) and per-generation (aggregated and stored in
-\texttt{dgm\_metadata.jsonl}). Primary metrics for the research
-question are marked \emph{primary}; the remainder are
-\emph{diagnostic}.
+\texttt{dgm\bk\_metadata.jsonl}). Primary metrics for the research
+question are marked \emph{primary}; the rest are \emph{diagnostic}.
 
 \paragraph{Per-child metrics.}
 \begin{itemize}
-  \item \texttt{accuracy\_score} (\emph{primary}). Defined as
-    \texttt{total\_resolved\_instances / total\_submitted\_instances}
-    (a rate in $[0, 1]$). Empty patches are tracked separately in
-    \texttt{total\_emptypatch\_ids} and excluded from the denominator;
-    see Section~\ref{sec:threats} for the bias this introduces under
-    minimax-m2.5. Direct measure of agent effectiveness on the tasks it
-    attempted.
-  \item \texttt{is\_compiled} (\emph{diagnostic}). A boolean flag
-    (\texttt{is\_compiled\_self\_improve} in
-    \texttt{utils/evo\_utils.py}) that is \texttt{True} when the child
-    (a) produced at least one non-empty patch, i.e.\
-    \verb|len(total_resolved_ids) + len(total_unresolved_ids) > 0|, and
-    (b) has \texttt{compile\_failure\_reason == None}. Tracks wasted
-    budget on children whose patch never compiled or was empty.
+  \item \texttt{accuracy\_score} (\emph{primary}). The rate
+    $\mathrm{resolved} / \mathrm{submitted}$ in $[0, 1]$. Empty
+    patches count in the denominator (one submitted, zero resolved,
+    so they drag the rate down). Tasks with no prediction file at all
+    (context-overflow crashes, docker timeouts) drop silently from
+    the denominator; see Section~\ref{sec:threats}. Direct measure of
+    agent effectiveness on the tasks it actually attempted.
+  \item \texttt{is\bk\_compiled} (\emph{diagnostic}). A boolean flag
+    (\texttt{is\bk\_compiled\bk\_self\bk\_improve} in
+    \texttt{utils/evo\bk\_utils.py}) that is \texttt{True} when the
+    child both (a) produced at least one non-empty patch, i.e.\
+    $|\mathrm{resolved}| + |\mathrm{unresolved}| > 0$, and (b) has
+    \texttt{compile\bk\_failure\bk\_reason} equal to \texttt{None}.
+    Tracks wasted budget on children whose patch never compiled or
+    was empty.
   \item \texttt{promoted\_from\_rung} (\emph{diagnostic}). Per-child
     integer: the highest rung the child was promoted from
     (\texttt{None} if killed at rung~0). Reveals how aggressively each
     scheduler prunes and how budget is concentrated on survivors.
-  \item \texttt{token\_usage\_total} (\emph{primary, cost component}).
-    Sum of input + output tokens consumed by the child across all LLM
-    calls (mutation generation, evaluation iterations). Read directly
-    from \verb|metadata['token_usage_total']|. Multiplied by the
+  \item \texttt{token\bk\_usage\bk\_total} (\emph{primary, cost
+    component}). Sum of input + output tokens consumed by the child
+    across all LLM calls (mutation generation, evaluation iterations).
+    Read directly from
+    \texttt{metadata['token\bk\_usage\bk\_total']}. Multiplied by the
     minimax-m2.5 token prices to convert to USD.
   \item \texttt{evaluated\_task\_count} (\emph{diagnostic}). Number of
     distinct tasks the child was actually evaluated on
@@ -200,11 +205,12 @@ question are marked \emph{primary}; the remainder are
 \paragraph{Per-generation metrics} (each entry in
 \texttt{dgm\_metadata.jsonl}):
 \begin{itemize}
-  \item \texttt{best\_child\_score} (\emph{primary outcome}).
-    $\max(\texttt{accuracy\_score})$ over children whose
-    \texttt{evaluated\_task\_count} $\geq$ \texttt{full\_budget\_size}.
-    Single-number summary of the best agent produced in the
-    generation. Tracks DGM's progress over generations.
+  \item \texttt{best\bk\_child\bk\_score} (\emph{primary outcome}).
+    $\max(\texttt{accuracy\bk\_score})$ over children whose
+    \texttt{evaluated\bk\_task\bk\_count} $\geq$
+    \texttt{full\bk\_budget\bk\_size}. Single-number summary of the
+    best agent produced in the generation. Tracks DGM's progress over
+    generations.
   \item \texttt{children\_fully\_evaluated\_count}
     (\emph{diagnostic}). Number of children whose
     \texttt{evaluated\_task\_count} reached the final rung's task
@@ -244,15 +250,17 @@ question are marked \emph{primary}; the remainder are
 
 Each scheduler was run once (single seed), so no between-run
 aggregation is possible. All analysis is within-run and descriptive,
-without any significance tests or confidence intervals. Within each
-run, all the metadata is loaded and the primary metrics are plotted as
-a function of generation: \texttt{best\_child\_score},
-\texttt{cost\_per\_gen}, and
-\texttt{evaluation\_budget\_tasks\_consumed}. Diagnostic metrics
-(\texttt{generation\_wall\_clock\_seconds},
-\texttt{children\_compiled\_count}, \texttt{archive\_size},
-\texttt{promoted\_from\_rung} distribution) are plotted alongside for
-context. The four schedulers are then compared on the same axes to
+without significance tests or confidence intervals.
+
+Within each run, the metadata is loaded and the primary metrics
+(\texttt{best\bk\_child\bk\_score}, \texttt{cost\bk\_per\bk\_gen},
+\texttt{evaluation\bk\_budget\bk\_tasks\bk\_consumed}) are plotted as
+a function of generation. Diagnostic metrics
+(\texttt{generation\bk\_wall\bk\_clock\bk\_seconds},
+\texttt{children\bk\_compiled\bk\_count}, \texttt{archive\bk\_size},
+and the \texttt{promoted\bk\_from\bk\_rung} distribution) are plotted
+alongside for context. The four schedulers are then compared on the
+same axes to
 surface differences in trajectory and final state.
 
 The only source of within-run variance is \texttt{--eval\_noise 0.1},
@@ -282,9 +290,12 @@ Several threats apply to this work.
 \begin{itemize}
   \item Single-seed-per-scheduler execution: one run per condition, no
     within-scheduler variance estimate, no significance claim possible.
-  \item \texttt{accuracy\_score} denominator excludes empty patches;
-    minimax-m2.5 can game the metric by emitting empty patches on tasks
-    it cannot solve.
+  \item \texttt{accuracy\_score} denominator silently drops tasks for
+    which no prediction file was emitted (context-overflow crashes,
+    docker timeouts, harness exceptions). Empty patches are counted
+    and penalise the rate, but full no-file failures shrink the
+    denominator and can inflate the reported rate; minimax-m2.5
+    context-overflow crashes on harder tasks expose this bias.
   \item Hyperband and ASHA require score $> 0$ for promotion, killing
     zero-score children regardless of their tie-breaker rank.
   \item \texttt{num\_benchmark\_evals = 1}: each child's score is a

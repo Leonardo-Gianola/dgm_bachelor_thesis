@@ -33,10 +33,11 @@ time. As a result, no G{\"o}del Machine has ever modified itself on a
 non-toy task.
 
 The Darwin G{\"o}del Machine~\cite{Sakana:25} replaces ``prove
-beneficial'' with ``measure beneficial on a benchmark''. This turns the
-machine into an evolutionary search, with a number of evolution-inspired
-ideas: an archive of variants, LLM-driven mutations, and fitness from
-SWE-bench. This relaxes the G{\"o}del Machine's impractical requirement
+beneficial'' with ``measure beneficial on a benchmark''. This turns
+the machine into an evolutionary search~\cite{Holland:75}, with a
+number of evolution-inspired ideas: an archive of variants
+reminiscent of quality-diversity methods~\cite{Mouret:15}, LLM-driven
+mutations, and fitness from SWE-bench. This relaxes the G{\"o}del Machine's impractical requirement
 of theoretically proving that a change will improve the system, instead
 requiring empirical evidence from experiments to demonstrate that a
 proposed new version enhances performance.
@@ -150,10 +151,12 @@ patches, there is a 25\% chance of picking
 \texttt{solve\_contextlength}. If none of these gates open, the
 fallback is to pick a random unresolved instance ID and target that.
 
-After the target is chosen, a diagnose call is made to the LLM with the
-evaluation log, the test patch, the problem statement, and the
-parent's failed patch. The LLM is asked to return a structured object
-containing \texttt{log\_summarization},
+After the target is chosen, a diagnose call is made to the LLM with
+the evaluation log, the test patch, the problem statement, and the
+parent's failed patch. The diagnosis is requested in a step-by-step
+chain-of-thought style~\cite{Wei:22}, asking the model to reason
+about the failure before proposing a fix. The LLM is asked to return
+a structured object containing \texttt{log\_summarization},
 \texttt{potential\_improvements}, \texttt{improvement\_proposal},
 \texttt{implementation\_suggestion}, and \texttt{problem\_description}.
 The \texttt{problem\_description} field becomes the synthetic GitHub
@@ -186,14 +189,17 @@ correlates with the score on a larger batch.
 
 The multi-armed bandit idea goes back to Robbins
 (1952)~\cite{Robbins:52}: $k$ slot machines, each paying a noisy reward,
-and the goal is to pick the best with as few pulls as possible. The
-Best Arm Identification (BAI) branch~\cite{Karnin:13} minimizes the
-pulls needed to find the winner rather than maximizing the reward
-accumulated along the way. Within BAI two variants exist: the
-\emph{fixed-confidence} variant minimizes the number of pulls required
+and the goal is to pick the best with as few pulls as possible.
+Classical regret-minimising approaches such as
+UCB~\cite{Auer:02} trade exploration against exploitation under a
+cumulative-reward objective. The Best Arm Identification (BAI)
+branch~\cite{Karnin:13} instead minimises the pulls needed to find
+the winner rather than maximising the reward accumulated along the
+way. Within BAI two variants exist: the
+\emph{fixed-confidence} variant minimises the number of pulls required
 to reach a target confidence in the chosen arm, while the
 \emph{fixed-budget} variant spends $T$ pulls total and tries to
-maximize the probability of returning the correct best arm. This
+maximise the probability of returning the correct best arm. This
 thesis operates in the fixed-budget regime: each generation has a
 fixed evaluation budget and the question is which child to crown.
 
@@ -277,10 +283,12 @@ in difficulty, introducing task-selection bias. And the Hyperband
 implementation used here sweeps only one bracket, which is closer to
 plain SH than to full Hyperband.
 
-Two related approaches are out of scope. BOHB combines Hyperband with
-Bayesian model-guided sampling, and PBT mutates hyperparameters online
-across a population. This thesis stays with the SH family because the
-goal is to isolate scheduling, not search-strategy modeling.
+Two related approaches are out of scope.
+BOHB~\cite{Falkner:18} combines Hyperband with Bayesian
+model-guided sampling, and PBT~\cite{Jaderberg:17} mutates
+hyperparameters online across a population. This thesis stays with
+the SH family because the goal is to isolate scheduling, not
+search-strategy modelling.
 
 \section{SWE-bench and \texttt{swe\_verified\_mini}}
 \label{sec:swebench}
@@ -310,10 +318,11 @@ A submission is a single unified \texttt{.patch} file, packaged into
 
 \subsection{Evaluation Pipeline}
 
-Each task runs inside its own Docker container. This isolates the
-environment, ensures reproducibility, applies the patch to a fresh
-checkout each time, enforces resource limits, and keeps parallel
-workers on the same host safe from cross-task interference.
+Each task runs inside its own Docker container~\cite{Merkel:14}.
+This isolates the environment, ensures reproducibility, applies the
+patch to a fresh checkout each time, enforces resource limits, and
+keeps parallel workers on the same host safe from cross-task
+interference.
 
 The pipeline first prepares the environment, then applies the
 gold-patch dependencies. The agent writes the model patch, which is
@@ -345,21 +354,30 @@ while preserving the distribution of task difficulties.
 \subsection{Metric Definition}
 
 This thesis tracks two metrics. The first is \texttt{accuracy\_score},
-defined as $\mathrm{resolved} / \mathrm{submitted}$. This is the
-DGM-reported metric and excludes empty patches from the denominator.
-The second is the \texttt{honest\_score}, defined as
-$\mathrm{resolved} / \mathrm{total}$, which includes every task the
-agent was asked to solve, including those for which it produced no
-patch.
+the DGM-reported figure, defined as
+$\mathrm{resolved} / \mathrm{submitted}$. The denominator is
+\texttt{len(predictions)} in SWE-bench's
+\texttt{run\_evaluation.py:444}: the count of
+\texttt{prediction.json} files the harness collected. Empty patches
+\emph{are} counted in the denominator (file written, patch empty);
+each empty patch enters as one submitted with zero resolved and
+therefore drags the rate down. Tasks for which the agent emitted no
+prediction file at all, for example context-overflow crashes, docker
+timeouts, or harness exceptions, are not counted: they are silently
+dropped from the denominator.
 
-Both metrics are needed because the two diverge exactly when a model
-emits empty patches: the \texttt{accuracy\_score} denominator drops
-while the \texttt{honest\_score} denominator stays fixed. We observed
-this divergence in practice when running with minimax-m2.5, which
-produces empty patches on tasks it cannot solve. Under
-denominator-excludes-empties accounting these empties are dropped from
-the score, inflating \texttt{accuracy\_score} while
-\texttt{honest\_score}, which counts them as failures, stays flat. Chapter~\ref{chap:results},
-Section~\ref{sec:results-validity} makes the empirical case that this
-divergence matters and treats it as the first finding of the results
-chapter.
+The second is the \texttt{coverage\_rate}, defined as
+$\mathrm{resolved} / \mathrm{total}$, where $\mathrm{total}$ is the
+benchmark size (50 for \texttt{swe\_verified\_mini}). It counts every
+task the agent was asked to solve, including the silent no-file
+drops, and treats them as failures rather than free passes.
+
+The two metrics diverge exactly when the agent fails to emit a file:
+the \texttt{accuracy\_score} denominator shrinks while the
+\texttt{coverage\_rate} denominator stays fixed at the benchmark
+size. We observed this divergence in practice when running with
+minimax-m2.5, whose context-overflow crashes on harder tasks reduce
+the \texttt{accuracy\_score} denominator and inflate the reported
+rate relative to the benchmark. Chapter~\ref{chap:results},
+Sections~\ref{sec:results-validity} and~\ref{sec:results-compile}
+make the empirical case for reporting both numbers side by side.
