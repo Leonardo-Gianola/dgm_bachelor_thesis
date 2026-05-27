@@ -9,6 +9,22 @@
 \usepackage{textcomp} %for upquote
 \usepackage{xcolor} % nice colors (for source code)
 \usepackage{microtype} % subtle font expansion/protrusion to reduce overfull boxes
+\usepackage{tikz} % component diagram and other vector graphics
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric,fit,backgrounds,calc}
+
+% Listing style for AI prompts shown in the Declaration of AI usage.
+\lstdefinestyle{prompt}{
+        basicstyle=\ttfamily\footnotesize,
+        frame=single,
+        backgroundcolor=\color{black!3},
+        breaklines=true,
+        breakatwhitespace=true,
+        breakindent=1em,
+        columns=fullflexible,
+        keepspaces=true,
+        xleftmargin=1em,
+        xrightmargin=1em,
+}
 
 \renewcommand{\ttdefault}{pcr} % nicer font for source code
 
@@ -58,6 +74,10 @@
 \frontmatter
 
 \input{abstract}
+
+\cleardoublepage
+
+\input{ai-declaration}
 
 \cleardoublepage
 

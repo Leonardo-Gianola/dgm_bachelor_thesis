@@ -1,0 +1,70 @@
+% Declaration of generative AI usage
+\section*{Declaration of generative AI and AI-assisted technologies}
+During the preparation of this work the author used generative AI
+services and tools in order to find resources, research relevant topics,
+review prose, and generate code. After using these tools, the author
+reviewed and edited the content as needed and takes full responsibility
+for the content of this project. In compliance with the code of conduct
+for the use of AI at SDU \cite{SDU-AI-CoC}.
+
+\subsection*{Source and literature search}
+Claude Code \cite{claude-code} configured with the Claude Opus 4.6 and
+Opus 4.7 models \cite{claude-opus} was used as an interactive assistant
+to surface candidate references and to cross-check citations against
+their sources. An example prompt used during this process looks like
+the following:
+
+\begin{lstlisting}[style=prompt]
+I am writing the Background chapter of a bachelor thesis on multi-fidelity schedulers (Successive Halving, Hyperband, ASHA) applied to a self-improving coding agent. Can you list the canonical references for each of these methods and verify whether the Karnin et al. 2013 paper is the correct primary citation for Successive Halving?
+\end{lstlisting}
+
+\subsection*{Brainstorming and idea generation}
+Claude Code \cite{claude-code} was used to discuss design alternatives
+for the scheduler implementations and the experimental protocol. Two
+recurring use-cases:
+\begin{enumerate}
+    \item Scheduler design discussions: clarifying the difference
+    between synchronous Hyperband and ASHA, sanity-checking the
+    promotion-quota formulation, and reviewing the per-rung budget
+    accounting. An example prompt used in this stage:
+    \begin{lstlisting}[style=prompt]
+In ASHA, the promotion quota per rung is computed as max(1, ceil(n / eta^(r+1))). Is this a cumulative cap on total promotions ever from rung r, or a per-rung count refreshed each time a candidate finishes? I want to make sure my implementation matches the original Li et al. 2020 paper.
+    \end{lstlisting}
+    \item Experimental-protocol brainstorming: identifying threats to
+    validity, choosing diagnostic metrics, and deciding which
+    constants to fix across runs. An example prompt used in this
+    stage:
+    \begin{lstlisting}[style=prompt]
+I am running one seed per scheduler on swe_verified_mini, four generations each, fixed initial archive. What are the main threats to validity I should disclose, and which diagnostic metrics would help a reader judge whether the cost-vs-accuracy comparison is fair?
+    \end{lstlisting}
+\end{enumerate}
+
+\subsection*{Programming}
+Agentic coding was used during the implementation phase of the project
+for editing the fork of the Darwin G\"odel Machine repository, in
+particular the scheduler layer and the operational guards described in
+Chapter~\ref{chap:implementation}. For this purpose, the tool below has
+been used:
+\begin{itemize}
+    \item Claude Code \cite{claude-code} with the Claude Opus 4.6 and
+    Opus 4.7 models \cite{claude-opus} - the only configuration used
+    in the project, for planning, implementing, reviewing diffs,
+    locating code across the fork, and assisting with debugging of
+    Docker, OpenRouter, and SWE-bench harness integration issues.
+\end{itemize}
+All AI-generated code was reviewed, tested, and integrated by the
+author; the author takes full responsibility for the final
+implementation.
+
+\subsection*{Language proofreading or linguistic feedback}
+Claude Code \cite{claude-code} was used to review and iterate on the
+prose of the thesis. The author wrote the chapter body text by hand;
+the model was used to flag unclear sentences, inconsistent terminology,
+and structural issues in already-written passages, and to suggest
+rewordings that the author then accepted, rejected, or rewrote. The
+model was not used to ghostwrite chapter body text. An example prompt
+used in this stage:
+
+\begin{lstlisting}[style=prompt]
+Review this paragraph for clarity and internal consistency with the rest of the Method chapter. Flag any sentence whose meaning is ambiguous, any term used inconsistently with earlier sections, and any claim that is stronger than what the single-seed pilot data supports. Do not rewrite the paragraph; list the issues.
+\end{lstlisting}

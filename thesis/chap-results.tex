@@ -53,13 +53,14 @@ Section~\ref{sec:threats}.
 \section{Aggregate Comparison}
 \label{sec:results-summary}
 
-This table shows the aggregated results of the four schedulers: four runs,
-four generations each, single seed. The best-of-run column shows the best
-global accuracy across schedulers, with Hyperband on top (75.86\%). The
-cost and efficiency columns favour the Genetic Algorithm, which is 34\%
-cheaper per point of accuracy gained than Hyperband. From the reliability
-angle, the baseline is the clear favourite with a 100\% compile rate. No
-single scheduler dominates every column.
+Table~\ref{tab:results-aggregate} shows the aggregated results of the
+four schedulers: four runs, four generations each, single seed. The
+best-of-run column shows the best global accuracy across schedulers,
+with Hyperband on top (75.86\%). The cost and efficiency columns
+favour the Genetic Algorithm, which is 34\% cheaper per point of
+accuracy gained than Hyperband. From the reliability angle, the
+baseline is the clear favourite with a 100\% compile rate. No single
+scheduler dominates every column.
 
 \begin{table}[ht]
 \centering
@@ -114,12 +115,14 @@ the most accuracy per dollar. The Genetic Algorithm is the most efficient,
 peaking at 70.59\% with a cost of \$0.71 per point, the sweet spot of
 lowest run cost and best efficiency, and 34\% cheaper per accuracy point
 than Hyperband. Up to the 70\% mark GA is the cheapest scheduler at every
-threshold, and ASHA is strictly dominated by GA there, reaching equal or
-lower accuracy at higher cost (\$39 versus \$26). The Hyperband run that
-broke 75\% did so with a budget 73\% larger than GA (\$44.98 for 5~pp
-more). Under a fixed budget GA dominates unless a score above roughly
-70\% is required, and in that territory Hyperband is the only option, but
-at a steep premium.
+threshold (Table~\ref{tab:results-threshold},
+Figure~\ref{fig:cost-threshold}), and ASHA is strictly dominated by GA
+there, reaching equal or lower accuracy at higher cost (\$39 versus
+\$26). The cost-versus-peak frontier is plotted in
+Figure~\ref{fig:cost-vs-peak}. The Hyperband run that broke 75\% did so
+with a budget 73\% larger than GA (\$44.98 for 5~pp more). Under a fixed
+budget GA dominates unless a score above roughly 70\% is required, and in
+that territory Hyperband is the only option, but at a steep premium.
 
 \begin{table}[ht]
 \centering
@@ -162,8 +165,9 @@ GA dominates up to its 70.59\% ceiling; only Hyperband clears 75\%, at
 \section{Per-Generation Trajectories}
 \label{sec:results-accuracy}
 
-This shows the per-generation best promoted child at the final rung,
-where the rate is resolved/submitted with empties counted in the
+Figure~\ref{fig:accuracy-per-gen} and Table~\ref{tab:results-pergen}
+show the per-generation best promoted child at the final rung, where
+the rate is resolved/submitted with empties counted in the
 denominator. The baseline rises slowly and monotonically,
 plateauing across generations~1 and~2 (both 54.17\%) before a
 generation-3 breakthrough, a gain of 25.5~pp over the initial archive. The
@@ -178,7 +182,11 @@ generation-0 result, collapsed at generation~1, partially rebounded at
 generation~2, and ended lowest at generation~3 (48.89\%). It is the only
 scheduler finishing below its own generation~0. Rung schedulers (Hyperband
 and ASHA) surface a strong child earlier than the baseline, but only
-Hyperband sustained that trajectory.
+Hyperband sustained that trajectory. Per-generation child counts,
+budgets, and archive growth for each scheduler are tabulated in
+Tables~\ref{tab:appendix-baseline}, \ref{tab:appendix-ga},
+\ref{tab:appendix-hyperband}, and~\ref{tab:appendix-asha}
+(Appendix~\ref{app:per-gen-detail}).
 
 \begin{figure}[ht]
 \centering
@@ -220,9 +228,10 @@ $^{\ddagger}$ GA generation~1 skipped (seed=0 selection bug).}
 This section covers two gates: compile, then rung promotion. For
 reliability the baseline is unmatched at 100\% compile, followed by ASHA
 (75\%) and Hyperband (70\%), and the most erratic is the Genetic Algorithm
-at 60\%. The argparse guard catches broken children before evaluation,
-reducing budget waste. In evaluation tasks spent
-(Table~\ref{tab:results-workload}, Figure~\ref{fig:eval-tasks}), ASHA
+at 60\% (Figure~\ref{fig:compile-rate}). The argparse guard catches
+broken children before evaluation, reducing budget waste. In evaluation
+tasks spent (Table~\ref{tab:results-workload},
+Figure~\ref{fig:eval-tasks}), ASHA
 spends the most under both readings (346~planned, 368~actual).
 Hyperband planned 324 tasks but child kills brought its actual
 exposure to 250, close to the baseline's intended 253. GA is consistently the lightest at

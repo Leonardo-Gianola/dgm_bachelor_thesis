@@ -18,7 +18,7 @@ they share the same model and benchmark.
 
 \subsection{Environment Setup}
 
-\begin{lstlisting}[language=bash,caption={Environment setup.}]
+\begin{lstlisting}[language=bash,caption={Environment setup.},label={lst:env-setup}]
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 export OPENAI_API_KEY='...'
@@ -28,21 +28,21 @@ docker run hello-world
 
 \subsection{Initial Archive Bootstrap}
 
-\begin{lstlisting}[language=bash,caption={Bootstrap the initial archive used by every pilot run.}]
+\begin{lstlisting}[language=bash,caption={Bootstrap the initial archive used by every pilot run.},label={lst:bootstrap}]
 python test_swebench.py --benchmark swe_verified_mini --full_mini \
   --agent_dir initial_swe_verified_mini --write_agent_metadata
 \end{lstlisting}
 
 \subsection{Scheduler Run Commands}
 
-\begin{lstlisting}[language=bash,caption={Baseline scheduler.}]
+\begin{lstlisting}[language=bash,caption={Baseline scheduler.},label={lst:run-baseline}]
 python DGM_outer.py --scheduler baseline \
   --max_generation 4 --selfimprove_size 2 --selfimprove_workers 2 \
   --benchmark swe_verified_mini --generation_task_budget_total 100 \
   --seed 0
 \end{lstlisting}
 
-\begin{lstlisting}[language=bash,caption={Genetic Algorithm scheduler.}]
+\begin{lstlisting}[language=bash,caption={Genetic Algorithm scheduler.},label={lst:run-ga}]
 python DGM_outer.py --scheduler ga \
   --max_generation 4 --selfimprove_size 2 --selfimprove_workers 2 \
   --benchmark swe_verified_mini --generation_task_budget_total 100 \
@@ -50,7 +50,7 @@ python DGM_outer.py --scheduler ga \
   --seed 0
 \end{lstlisting}
 
-\begin{lstlisting}[language=bash,caption={Hyperband scheduler.}]
+\begin{lstlisting}[language=bash,caption={Hyperband scheduler.},label={lst:run-hyperband}]
 python DGM_outer.py --scheduler hyperband \
   --max_generation 4 --selfimprove_size 2 --selfimprove_workers 2 \
   --benchmark swe_verified_mini --generation_task_budget_total 100 \
@@ -59,7 +59,7 @@ python DGM_outer.py --scheduler hyperband \
   --seed 0
 \end{lstlisting}
 
-\begin{lstlisting}[language=bash,caption={ASHA scheduler.}]
+\begin{lstlisting}[language=bash,caption={ASHA scheduler.},label={lst:run-asha}]
 python DGM_outer.py --scheduler asha \
   --max_generation 4 --selfimprove_size 2 --selfimprove_workers 2 \
   --benchmark swe_verified_mini --generation_task_budget_total 100 \
@@ -200,3 +200,138 @@ Gen & Children & Compiled & Evaluated & Tasks & Archive & Best \\
 \hline
 \end{tabular}
 \end{table}
+
+% =====================================================================
+\section{SWE-bench Submission Format}
+\label{app:swe-bench-submission}
+
+Each child agent emits a single unified \texttt{.patch} file packaged
+into \texttt{prediction.json}. The schema is shown in
+Listing~\ref{lst:swe-bench-prediction}: \texttt{instance\_id} names the
+SWE-bench task, \texttt{model\_name\_or\_path} identifies the agent,
+and \texttt{model\_patch} carries the diff applied by the grading
+harness.
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,caption={SWE-bench \texttt{prediction.json} schema.},label={lst:swe-bench-prediction}]
+{
+  "instance_id": "django__django-11790",
+  "model_name_or_path": "<agent>",
+  "model_patch": "diff --git a/django/...\n..."
+}
+\end{lstlisting}
+
+% =====================================================================
+\section{Scheduler Pseudocode}
+\label{app:scheduler-pseudocode}
+
+The five listings below give the pseudocode for the shared base class
+and for each of the four schedulers compared in
+Chapter~\ref{chap:results}. They are referenced throughout
+Chapter~\ref{chap:implementation}.
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true,caption={\texttt{BaseScheduler} contract and shared helpers.},label={lst:base-scheduler}]
+class BaseScheduler:
+    run_generation(...)             -> raise NotImplementedError   # abstract
+    get_generation_child_count(...) -> raise NotImplementedError   # abstract
+
+    _generate_children(entries):
+        executor = ThreadPool(selfimprove_workers)
+        submit generate_child_patch for each entry
+        wait FIRST_COMPLETED until all done or GENERATION_TIMEOUT
+        return child_ids
+
+    _evaluate_children(run_ids, task_list, rung):
+        executor = ThreadPool(selfimprove_workers)
+        submit evaluate_existing_child for each run_id
+        return evaluated_ids
+
+# module-level helpers (not methods):
+_rank_children(ids)            -> sort by (-score, tokens, run_id)
+_promote_top_k(ids, k, pos?)   -> top k, optionally require score>0
+_mark_promotion_decisions(...) -> write promotion_decision / promoted_from_rung
+\end{lstlisting}
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true,caption={Baseline \texttt{run\_generation}: three sequential eval stages with quality gate plus budget cap.},label={lst:baseline-pseudo}]
+run_generation(entries, full_eval_threshold):
+    children = _generate_children(entries)
+
+    # Stage 0 -- small
+    _evaluate_children(children, small_issues, rung=0)
+    consumed += len(children) * len(small_issues)
+    s1 = [c for c in children if resolved(c) >= 0.4 * len(small_issues)]
+    s1 = _promote_top_k(s1, remaining_budget // len(medium_issues))   # budget cap
+    _mark_promotion_decisions(children, s1, 0)
+
+    # Stage 1 -- medium
+    _evaluate_children(s1, medium_issues, rung=1)
+    consumed += len(s1) * len(medium_issues)
+    s2 = [c for c in s1 if score(c) >= full_eval_threshold]
+    s2 = _promote_top_k(s2, remaining_budget // len(final_issues))
+    _mark_promotion_decisions(s1, s2, 1)
+
+    # Stage 2 -- full (keep all)
+    _evaluate_children(s2, final_issues, rung=2)
+    consumed += len(s2) * len(final_issues)
+
+    finalize_child_metadata(c, post_improve_diagnose=args.value) for c in children
+    return compiled children as archive_candidates
+\end{lstlisting}
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true,caption={Hyperband \texttt{run\_generation}: synchronous SHA with disjoint per-rung task chunks.},label={lst:hyperband-pseudo}]
+run_generation(entries, _):
+    children = _generate_children(entries)
+    increments = _task_increments(seed)        # disjoint chunks, one per rung
+
+    current = children
+    for r, (budget_size, task_inc) in enumerate(zip(budgets, increments)):
+        _evaluate_children(current, task_inc, rung=r)   # SYNC: all finish first
+        consumed += len(current) * len(task_inc)
+        if r == last_rung:
+            promoted = current                          # keep all
+        else:
+            promoted = _promote_top_k(current,
+                                      ceil(len(current)/eta),
+                                      require_positive=True)
+        _mark_promotion_decisions(current, promoted, r)
+        current = promoted
+
+    winner = _rank_children(current)[0] if current else None
+    finalize_child_metadata(c, post_improve_diagnose=False) for c in children
+    if winner: finalize_child_metadata(winner, post_improve_diagnose=args.value)
+    return archive_candidates = [winner]
+\end{lstlisting}
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true,caption={ASHA \texttt{run\_generation}: asynchronous promote-on-arrival with precomputed cumulative quotas.},label={lst:asha-pseudo}]
+run_generation(entries, _):
+    children = _generate_children(entries)
+    quotas = [max(1, ceil(n_children / eta**(r+1)))      # precomputed, cumulative
+              for r in range(n_rungs-1)]
+
+    pending = {submit_eval(c, rung=0) for c in children}  # shared executor
+    while pending:
+        done, pending = wait(pending, FIRST_COMPLETED)    # ASYNC: no barrier
+        for f in done:
+            run_id, r = future_info[f]
+            consumed += len(task_increments[r])
+            rung_completed[r].append(run_id)
+        for r in range(n_rungs-1):                         # low to high: chain
+            for c in _rank_children(rung_completed[r]):    # ranked by score
+                if promoted[r] < quotas[r] and score(c) > 0 and c not promoted:
+                    promote c; pending |= {submit_eval(c, r+1)}  # refill slot
+
+    winner = _rank_children(rung_completed[last])[0]
+    return archive_candidates = [winner]
+\end{lstlisting}
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true,caption={GA scheduler: inherits Baseline staged evaluation, overrides only the mutation call.},label={lst:ga-pseudo}]
+class GAScheduler(BaselineScheduler):
+    __init__: self.mutation_temperature = args.ga_mutation_temperature
+
+    _generate_children(entries, search_strategy, ...):   # override
+        return super()._generate_children(
+            entries, search_strategy,
+            blind_mutation=True,                          # force blind
+            mutation_temperature=self.mutation_temperature)
+
+    # run_generation / stage logic: inherited unchanged from BaselineScheduler
+\end{lstlisting}

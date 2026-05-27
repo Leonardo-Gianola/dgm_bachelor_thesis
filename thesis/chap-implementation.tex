@@ -10,6 +10,110 @@ additions (Section~\ref{sec:fork}), the scheduler implementations
 (Section~\ref{sec:scheduler-impl}), and the operational guards that keep
 long runs robust (Section~\ref{sec:guards}).
 
+Figure~\ref{fig:components} gives a high-level component view of the
+forked system and how the parts interact across a single generation.
+The evolution loop in \texttt{DGM\_outer.py} drives a pluggable
+scheduler, which delegates child generation and evaluation to
+\texttt{self\_improve\_step.py}. Generation flows through the coding
+agent and the LLM stack out to the OpenRouter API; evaluation flows
+through the benchmark registry and the Docker utilities into a
+per-task SWE-bench harness container. Results from both flows are
+recorded per child and then appended to \texttt{dgm\_metadata.jsonl},
+which feeds the archive consulted by the scheduler in the next
+generation.
+
+\begin{figure}[tb]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[
+      font=\small\ttfamily,
+      every node/.style={align=center},
+      mod/.style={draw, rounded corners=2pt, fill=black!3,
+                  minimum width=32mm, minimum height=9mm},
+      new/.style={draw, rounded corners=2pt, fill=blue!8,
+                  line width=0.8pt,
+                  minimum width=32mm, minimum height=9mm},
+      ext/.style={draw, dashed, rounded corners=2pt, fill=black!2,
+                  minimum width=32mm, minimum height=9mm},
+      data/.style={draw, rounded corners=2pt, fill=orange!12,
+                   minimum width=32mm, minimum height=9mm},
+      flow/.style={-{Latex[length=2mm]}, thick},
+      gen/.style={flow, draw=blue!60!black},
+      eval/.style={flow, draw=red!50!black},
+      lbl/.style={font=\scriptsize\rmfamily, fill=white, inner sep=1pt},
+  ]
+
+  % Backbone (centered)
+  \node[mod]  (outer)    at ( 0,    0)    {DGM\_outer.py\\\scriptsize evolution loop};
+  \node[new]  (sched)    at ( 0,   -1.7)  {schedulers.py\\\scriptsize Base / Baseline / Hyperband / ASHA / GA};
+  \node[mod]  (sis)      at ( 0,   -3.4)  {self\_improve\_step.py\\\scriptsize child generation + evaluation};
+
+  % Left column (generation pipeline)
+  \node[mod]  (agent)    at (-3.2, -5.4)  {coding\_agent.py\\\scriptsize patch generation};
+  \node[new]  (gaprompt) at (-7.8, -5.4)  {prompts/\\ga\_mutation\_prompt.py};
+  \node[mod]  (llmwt)    at (-3.2, -7.1)  {llm\_withtools.py\\\scriptsize tool-calling layer};
+  \node[mod]  (llm)      at (-3.2, -8.8)  {llm.py\\\scriptsize base LLM caller};
+  \node[ext]  (or)       at (-3.2,-10.5)  {OpenRouter API\\\scriptsize minimax-m2.5};
+
+  % Right column (evaluation pipeline)
+  \node[new]  (bench)    at ( 3.2, -5.4)  {benchmarks/config.py\\\scriptsize task pool registry};
+  \node[mod]  (docker)   at ( 3.2, -7.1)  {utils/docker\_utils.py\\\scriptsize container provisioning};
+  \node[ext]  (dock)     at ( 3.2, -8.8)  {Docker daemon};
+  \node[ext]  (swe)      at ( 3.2,-10.5)  {SWE-bench harness\\\scriptsize per-task container};
+
+  % Data artifacts (centered, below both columns)
+  \node[data] (meta)     at ( 0,   -12.4) {dgm\_metadata.jsonl\\\scriptsize per-generation log};
+  \node[data] (archive)  at ( 0,   -14.0) {output\_dgm/\\\scriptsize archive of compiled children};
+
+  % Control flow (backbone)
+  \draw[flow] (outer) -- node[lbl, right]{select scheduler} (sched);
+  \draw[flow] (sched) -- node[lbl, right]{run\_generation()} (sis);
+
+  % Generation branch
+  \draw[gen] (sis.south) -- ++(0,-0.35) -| (agent.north);
+  \draw[gen] (agent) -- (llmwt);
+  \draw[gen] (llmwt) -- (llm);
+  \draw[gen] (llm) -- (or);
+  \draw[gen] (gaprompt.east) -- node[lbl, above, yshift=5mm]{GA only} (agent.west);
+
+  % Evaluation branch
+  \draw[eval] (sis.south) -- ++(0,-0.35) -| (bench.north);
+  \draw[eval] (bench) -- (docker);
+  \draw[eval] (docker) -- (dock);
+  \draw[eval] (dock) -- (swe);
+
+  % Branch terminals -> metadata (meta sits between or and swe, no archive crossings)
+  \draw[flow] (or.south)  -- ++(0,-0.4) -| (meta.west);
+  \draw[flow] (swe.south) -- ++(0,-0.4) -| (meta.east);
+  \draw[flow] (meta) -- (archive);
+
+  % Feedback arrow routed via far-left margin, well clear of all nodes
+  \draw[flow, dashed]
+    (archive.west) -- ++(-9.5,0) coordinate (fbk)
+    -- (fbk |- sched.west)
+    -- (sched.west);
+  \node[lbl] at ($(fbk |- sched.west) + (4mm, -3mm)$) {next generation};
+
+  % Legend (top-left, above outer)
+  \node[new,  minimum width=22mm, minimum height=5mm, font=\scriptsize\ttfamily] (lg1) at (-7.8, 1.7) {new file};
+  \node[mod,  minimum width=22mm, minimum height=5mm, font=\scriptsize\ttfamily] (lg2) at (-5.1, 1.7) {modified file};
+  \node[ext,  minimum width=22mm, minimum height=5mm, font=\scriptsize\ttfamily] (lg3) at (-2.4, 1.7) {external};
+  \node[data, minimum width=22mm, minimum height=5mm, font=\scriptsize\ttfamily] (lg4) at ( 0.3, 1.7) {data artifact};
+
+  \end{tikzpicture}%
+  }
+  \caption{Component view of the forked DGM system. Blue-filled boxes
+    are files added by this work, grey-filled boxes are files of the
+    upstream DGM that were modified, dashed boxes are external
+    components (Docker daemon, OpenRouter, SWE-bench harness), and
+    orange boxes are persistent data artifacts. Blue arrows trace the
+    child-generation pipeline and red arrows trace the evaluation
+    pipeline; both converge on \texttt{dgm\_metadata.jsonl}, which
+    feeds the archive consulted by the scheduler in the next
+    generation.}
+  \label{fig:components}
+\end{figure}
+
 \section{Fork Additions}
 \label{sec:fork}
 
@@ -97,27 +201,9 @@ ranking, and metadata-marking are shared module-level helpers
 (\texttt{\_promote\_top\_k}, \texttt{\_rank\_children},
 \texttt{\_mark\_promotion\_decisions}) that every subclass calls.
 
-\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true]
-class BaseScheduler:
-    run_generation(...)             -> raise NotImplementedError   # abstract
-    get_generation_child_count(...) -> raise NotImplementedError   # abstract
-
-    _generate_children(entries):
-        executor = ThreadPool(selfimprove_workers)
-        submit generate_child_patch for each entry
-        wait FIRST_COMPLETED until all done or GENERATION_TIMEOUT
-        return child_ids
-
-    _evaluate_children(run_ids, task_list, rung):
-        executor = ThreadPool(selfimprove_workers)
-        submit evaluate_existing_child for each run_id
-        return evaluated_ids
-
-# module-level helpers (not methods):
-_rank_children(ids)            -> sort by (-score, tokens, run_id)
-_promote_top_k(ids, k, pos?)   -> top k, optionally require score>0
-_mark_promotion_decisions(...) -> write promotion_decision / promoted_from_rung
-\end{lstlisting}
+The \texttt{BaseScheduler} contract and shared helpers are listed in
+Listing~\ref{lst:base-scheduler}
+(Appendix~\ref{app:scheduler-pseudocode}).
 
 \subsection{Baseline}
 
@@ -145,31 +231,9 @@ budget divided by next-stage size, keeping the top-k ranked. The gate
 selects eligible candidates; the budget cap then trims. All scheduler
 metadata is saved via \texttt{finalize\_child\_metadata} per child.
 
-\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true]
-run_generation(entries, full_eval_threshold):
-    children = _generate_children(entries)
-
-    # Stage 0 -- small
-    _evaluate_children(children, small_issues, rung=0)
-    consumed += len(children) * len(small_issues)
-    s1 = [c for c in children if resolved(c) >= 0.4 * len(small_issues)]
-    s1 = _promote_top_k(s1, remaining_budget // len(medium_issues))   # budget cap
-    _mark_promotion_decisions(children, s1, 0)
-
-    # Stage 1 -- medium
-    _evaluate_children(s1, medium_issues, rung=1)
-    consumed += len(s1) * len(medium_issues)
-    s2 = [c for c in s1 if score(c) >= full_eval_threshold]
-    s2 = _promote_top_k(s2, remaining_budget // len(final_issues))
-    _mark_promotion_decisions(s1, s2, 1)
-
-    # Stage 2 -- full (keep all)
-    _evaluate_children(s2, final_issues, rung=2)
-    consumed += len(s2) * len(final_issues)
-
-    finalize_child_metadata(c, post_improve_diagnose=args.value) for c in children
-    return compiled children as archive_candidates
-\end{lstlisting}
+The full \texttt{run\_generation} pseudocode for Baseline is given in
+Listing~\ref{lst:baseline-pseudo}
+(Appendix~\ref{app:scheduler-pseudocode}).
 
 \subsection{Hyperband}
 
@@ -224,29 +288,9 @@ Baseline; (5) the ``fully tested'' task count is read from
 \texttt{budgets[-1]} in Hyperband versus
 \texttt{expected\_task\_counts[-1]} in Baseline.
 
-\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true]
-run_generation(entries, _):
-    children = _generate_children(entries)
-    increments = _task_increments(seed)        # disjoint chunks, one per rung
-
-    current = children
-    for r, (budget_size, task_inc) in enumerate(zip(budgets, increments)):
-        _evaluate_children(current, task_inc, rung=r)   # SYNC: all finish first
-        consumed += len(current) * len(task_inc)
-        if r == last_rung:
-            promoted = current                          # keep all
-        else:
-            promoted = _promote_top_k(current,
-                                      ceil(len(current)/eta),
-                                      require_positive=True)
-        _mark_promotion_decisions(current, promoted, r)
-        current = promoted
-
-    winner = _rank_children(current)[0] if current else None
-    finalize_child_metadata(c, post_improve_diagnose=False) for c in children
-    if winner: finalize_child_metadata(winner, post_improve_diagnose=args.value)
-    return archive_candidates = [winner]
-\end{lstlisting}
+The full \texttt{run\_generation} pseudocode for Hyperband is given in
+Listing~\ref{lst:hyperband-pseudo}
+(Appendix~\ref{app:scheduler-pseudocode}).
 
 \subsection{ASHA}
 
@@ -282,27 +326,9 @@ and need more time to terminate the full evaluation; this separation of
 the eval-loop timeout from the patch-generation timeout was a dedicated
 fix.
 
-\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true]
-run_generation(entries, _):
-    children = _generate_children(entries)
-    quotas = [max(1, ceil(n_children / eta**(r+1)))      # precomputed, cumulative
-              for r in range(n_rungs-1)]
-
-    pending = {submit_eval(c, rung=0) for c in children}  # shared executor
-    while pending:
-        done, pending = wait(pending, FIRST_COMPLETED)    # ASYNC: no barrier
-        for f in done:
-            run_id, r = future_info[f]
-            consumed += len(task_increments[r])
-            rung_completed[r].append(run_id)
-        for r in range(n_rungs-1):                         # low to high: chain
-            for c in _rank_children(rung_completed[r]):    # ranked by score
-                if promoted[r] < quotas[r] and score(c) > 0 and c not promoted:
-                    promote c; pending |= {submit_eval(c, r+1)}  # refill slot
-
-    winner = _rank_children(rung_completed[last])[0]
-    return archive_candidates = [winner]
-\end{lstlisting}
+The full \texttt{run\_generation} pseudocode for ASHA is given in
+Listing~\ref{lst:asha-pseudo}
+(Appendix~\ref{app:scheduler-pseudocode}).
 
 \subsection{GA}
 
@@ -317,18 +343,9 @@ itself lives in \texttt{self\_improve\_step.py:470} and
 by blind high-temperature sampling. Selection is tournament parent-choice
 in \texttt{DGM\_outer.py}, not in the scheduler.
 
-\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible,breaklines=true]
-class GAScheduler(BaselineScheduler):
-    __init__: self.mutation_temperature = args.ga_mutation_temperature
-
-    _generate_children(entries, search_strategy, ...):   # override
-        return super()._generate_children(
-            entries, search_strategy,
-            blind_mutation=True,                          # force blind
-            mutation_temperature=self.mutation_temperature)
-
-    # run_generation / stage logic: inherited unchanged from BaselineScheduler
-\end{lstlisting}
+The GA subclass and its single override are given in
+Listing~\ref{lst:ga-pseudo}
+(Appendix~\ref{app:scheduler-pseudocode}).
 
 \section{Operational Guards}
 \label{sec:guards}

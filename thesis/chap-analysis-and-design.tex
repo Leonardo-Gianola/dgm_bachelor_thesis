@@ -140,24 +140,12 @@ All other variables are held constant:
     16~GiB RAM, Fedora Linux 44.
 \end{itemize}
 
-A sample run command for Hyperband:
-
-\begin{lstlisting}[language=bash, basicstyle=\ttfamily\small]
-python DGM_outer.py \
-    --scheduler hyperband \
-    --benchmark swe_verified_mini \
-    --max_generation 4 \
-    --selfimprove_size 2 \
-    --seed 0 \
-    --generation_task_budget_total 100 \
-    --hyperband_eta 5 \
-    --hyperband_budgets 2,10,50 \
-    --hyperband_initial_children 15
-\end{lstlisting}
-
-The other three schedulers use identical flags with
-\texttt{--scheduler} swapped. Baseline drops the three
-\texttt{--hyperband\_*} flags; GA drops them and adds
+A sample run command for Hyperband is given in
+Listing~\ref{lst:run-hyperband} (Appendix~\ref{app:reproduction}). The
+other three schedulers use identical flags with \texttt{--scheduler}
+swapped: see Listings~\ref{lst:run-baseline}, \ref{lst:run-ga},
+and~\ref{lst:run-asha} for the Baseline, GA, and ASHA commands. Baseline
+drops the three \texttt{--hyperband\_*} flags; GA drops them and adds
 \texttt{--ga\_mutation\_temperature 1.0}.
 
 \section{Metrics}

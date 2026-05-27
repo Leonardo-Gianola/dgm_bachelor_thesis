@@ -93,26 +93,47 @@ And \emph{parent lineage is tracked}: each child records its parent,
 allowing the sampler to count children per parent.
 
 Parent selection is by default controlled by the
-\texttt{score\_child\_prop} method. For each archive member $c$ it
-computes two factors. The \emph{score factor} is a sigmoid-scaled
-fitness:
-\[
-  s(c) = \frac{1}{1 + \exp\bigl(-10 \cdot (\mathrm{accuracy\_score}(c) - 0.5)\bigr)},
-\]
-which pushes weak agents toward $0$ weight and strong agents toward $1$.
-The score is not linear. The \emph{novelty factor} is a child-count
-penalty:
-\[
-  n(c) = \frac{1}{1 + \mathrm{children\_count}(c)},
-\]
-where \texttt{children\_count} is the number of archive members whose
-parent is $c$. This is a pure prior-use penalty.
+\texttt{score\_child\_prop} method. Let $\mathcal{A}$ denote the current
+archive and let $c \in \mathcal{A}$ be a candidate parent. For each
+$c$ the method computes two factors from quantities recorded in
+\texttt{dgm\_metadata.jsonl}: $\mathrm{accuracy\_score}(c) \in [0,1]$,
+the fraction of resolved SWE-bench tasks for $c$, and
+$\mathrm{children\_count}(c) \in \mathbb{N}_0$, the number of archive
+members whose parent is $c$.
 
-The two factors combine into a sampling probability $p(c) \propto
-s(c) \cdot n(c)$. The effect is that high-score, rarely-mined agents
-dominate sampling. Once a strong parent spawns several children, its
-weight drops and weaker but unmined parents become competitive, giving
-a coarse exploration/exploitation balance.
+The \emph{score factor} is a sigmoid-scaled fitness:
+\begin{equation}
+  s(c) = \frac{1}{1 + \exp\bigl(-10 \cdot (\mathrm{accuracy\_score}(c) - 0.5)\bigr)},
+  \label{eq:score-factor}
+\end{equation}
+where the midpoint $0.5$ centers the sigmoid at a 50\% resolve rate
+and the slope $10$ makes the transition sharp: agents below roughly
+$0.35$ accuracy are pushed toward $s(c) \approx 0$, while agents above
+roughly $0.65$ saturate near $s(c) \approx 1$. The mapping is
+deliberately non-linear, so two strong agents with accuracies $0.7$
+and $0.8$ receive nearly equal weight rather than one being preferred
+in proportion to a small score gap.
+
+The \emph{novelty factor} is a child-count penalty:
+\begin{equation}
+  n(c) = \frac{1}{1 + \mathrm{children\_count}(c)},
+  \label{eq:novelty-factor}
+\end{equation}
+which starts at $n(c) = 1$ for an unmined parent and decays as
+$1, \tfrac{1}{2}, \tfrac{1}{3}, \ldots$ each time $c$ is selected and
+spawns a compiled child. It is a pure prior-use penalty: no diversity
+metric on the modified code is computed, only how often $c$ has
+already been used.
+
+The two factors combine into a sampling probability over the archive:
+\begin{equation}
+  p(c) = \frac{s(c) \cdot n(c)}{\sum_{c' \in \mathcal{A}} s(c') \cdot n(c')}.
+  \label{eq:parent-sampling}
+\end{equation}
+The effect is that high-score, rarely-mined agents dominate sampling.
+Once a strong parent spawns several children its weight drops via
+Eq.~\ref{eq:novelty-factor} and weaker but unmined parents become
+competitive, giving a coarse exploration/exploitation balance.
 
 The archive growth policy used in this thesis is \texttt{keep\_all},
 matching the original DGM paper. The alternative,
@@ -170,8 +191,6 @@ setting.
 
 \section{Multi-Fidelity Evaluation}
 \label{sec:multifidelity}
-
-\subsection{The Core Idea}
 
 We define \emph{fidelity} as the knob trading evaluation accuracy
 against evaluation cost. Low fidelity levels are cheap but yield a
@@ -306,15 +325,9 @@ JSON list of test names that must flip from failing to passing),
 and \texttt{patch} (the gold-standard human fix).
 
 A submission is a single unified \texttt{.patch} file, packaged into
-\texttt{prediction.json}:
-
-\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,columns=fullflexible]
-{
-  "instance_id": "django__django-11790",
-  "model_name_or_path": "<agent>",
-  "model_patch": "diff --git a/django/...\n..."
-}
-\end{lstlisting}
+\texttt{prediction.json}; the schema is shown in
+Listing~\ref{lst:swe-bench-prediction}
+(Appendix~\ref{app:swe-bench-submission}).
 
 \subsection{Evaluation Pipeline}
 

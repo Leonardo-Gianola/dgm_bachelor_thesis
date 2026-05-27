@@ -1,30 +1,26 @@
 % abstract / resume
 \begin{abstract}
-  The Darwin G{\"o}del Machine (DGM) is a self-improving system that
-  iteratively modifies its own code and empirically validates each
-  change using coding benchmarks. Inspired by Darwinian evolution and
-  open-endedness research~\cite{Stanley:17}, the DGM grows an archive of generated
-  coding agents. It samples agents from this archive, which
-  self-modify to create new, novel variants of themselves. One of the
-  bottlenecks of DGM is that each generation spends most of its
-  compute budget on evaluating children that ultimately fail to
-  improve the parent. This thesis investigates whether
-  \emph{multi-fidelity evaluation schedulers} can reduce wasted
-  compute without sacrificing the final accuracy of the evolved
-  agents. We extend the DGM with four schedulers (a sequential
-  \texttt{baseline}, synchronous \texttt{hyperband}, asynchronous
-  \texttt{asha}, and a blind high-temperature genetic algorithm
-  \texttt{ga}) and compare them on a fixed subset of SWE-bench
-  Verified (\texttt{swe\_verified\_mini}, 50 tasks) using the same
-  self-improvement budget, model, and initial archive. In four
-  single-seed pilot runs the genetic algorithm reaches a peak accuracy
-  of 70.59\% at the lowest cost (\$26 total, \$0.71 per accuracy point
-  gained); Hyperband reaches the highest peak of 75.86\% at 73\%
-  higher cost; ASHA runs about 32\% faster in wall-clock than
-  Hyperband but its peak regresses across generations; the baseline
-  keeps a 100\% compile rate at the lowest peak of 59.57\%. All
-  results are single seed (n=1) and descriptive only. Overall, this
-  work extends the DGM and contributes toward self-improving AI,
-  capable of gathering its own stepping stones along a path that
-  unfolds into endless innovation.
+  The Darwin G{\"o}del Machine (DGM) is an evolutionary framework in
+  which a population of coding agents rewrites its own source code,
+  evaluates the resulting children on SWE-bench, and keeps the most
+  promising offspring in an archive that seeds the next generation.
+  Language models have become capable enough at programming to act as
+  such autonomous agents: programs that pursue a goal, search and edit
+  files, run tests, and iterate in a reason-act loop. One bottleneck
+  of this loop is that most of the compute invested per generation
+  goes into evaluating children that ultimately fail to improve the
+  parent. This thesis investigates whether \emph{multi-fidelity
+  evaluation schedulers} can reduce wasted compute without sacrificing
+  the final accuracy of the evolved agents. We extend the DGM with
+  several schedulers (a sequential \texttt{baseline}, synchronous
+  \texttt{hyperband}, asynchronous \texttt{asha}, and a blind
+  high-temperature genetic algorithm \texttt{ga}) and compare them on
+  a fixed subset of SWE-bench Verified using the same self-improvement
+  budget, model, and initial archive. Across single-seed pilot runs,
+  the genetic algorithm reaches a competitive peak accuracy at the
+  lowest cost, while Hyperband attains the highest peak but spends
+  considerably more. Overall, this work shows that the choice of
+  evaluation scheduler is a non-trivial knob in self-improving systems
+  like the DGM, and gives a first cost-versus-accuracy reading of four
+  candidates on SWE-bench Verified.
 \end{abstract}
