@@ -62,14 +62,19 @@ generation.
   \node[ext] (swe) at (7,-5.2) {\textbf{Docker + SWE-bench}\\[1pt]
         {\scriptsize one container per task}};
 
-  % spine flow
-  \draw[flow] (orch) -- node[lbl, right]{spawn child} (gen);
-  \draw[flow] (gen)  -- node[lbl, right]{code patch} (eval);
-  \draw[flow] (eval) -- node[lbl, right]{resolved / unresolved} (store);
+  % spine flow (arrows drawn full; labels offset so they never clip the heads)
+  \draw[flow] (orch) -- (gen);
+  \draw[flow] (gen)  -- (eval);
+  \draw[flow] (eval) -- (store);
+  \node[lbl, anchor=west] at ($(orch.south)!0.5!(gen.north)+(2.5mm,0)$)   {spawn child};
+  \node[lbl, anchor=west] at ($(gen.south)!0.5!(eval.north)+(2.5mm,0)$)   {code patch};
+  \node[lbl, anchor=west] at ($(eval.south)!0.5!(store.north)+(2.5mm,0)$) {resolved / unresolved};
 
-  % calls to external services
-  \draw[flowd] (gen.east)  -- node[lbl, above]{LLM call} (or.west);
-  \draw[flowd] (eval.east) -- node[lbl, above]{run tasks} (swe.west);
+  % calls to external services (arrows full; labels above, clear of heads)
+  \draw[flowd] (gen.east)  -- (or.west);
+  \draw[flowd] (eval.east) -- (swe.west);
+  \node[lbl, anchor=south] at ($(gen.east)!0.45!(or.west)+(0,0.6mm)$)   {LLM call};
+  \node[lbl, anchor=south] at ($(eval.east)!0.45!(swe.west)+(0,0.6mm)$) {run tasks};
 
   % feedback loop (far left)
   \draw[flow] (store.west) -- ++(-1.6,0) |- (orch.west);
