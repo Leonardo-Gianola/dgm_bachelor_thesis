@@ -83,8 +83,8 @@ generation.
   \draw[eval] (dock) -- (swe);
 
   % Branch terminals -> metadata (meta sits between or and swe, no archive crossings)
-  \draw[flow] (or.south)  -- ++(0,-0.4) -| (meta.west);
-  \draw[flow] (swe.south) -- ++(0,-0.4) -| (meta.east);
+  \draw[flow] (or.south)  |- (meta.west);
+  \draw[flow] (swe.south) |- (meta.east);
   \draw[flow] (meta) -- (archive);
 
   % Feedback arrow routed via far-left margin, well clear of all nodes
@@ -390,6 +390,7 @@ edits in prose instead of applying them via the editor/bash tools
 vary sampling temperature, the corrective signal is the strengthened
 prompt and context reset, not increased randomness.
 
+\enlargethispage{3\baselineskip}
 \paragraph{Docker startup-retry and per-image build lock.}
 Container provisioning in \texttt{build\_dgm\_container()} has two guards.
 First, image builds are serialized per image name: a module-level dict of
