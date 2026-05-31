@@ -86,19 +86,20 @@ improvements are inherited, not rediscovered.
   \begin{tikzpicture}[
       font=\small,
       phase/.style={draw, rounded corners=2pt, fill=black!3, align=center,
-                    text width=30mm, minimum height=20mm, inner sep=4pt},
+                    text width=34mm, minimum height=20mm, inner sep=4pt},
       store/.style={draw, rounded corners=2pt, fill=orange!12, align=center,
-                    text width=30mm, minimum height=20mm, inner sep=4pt},
+                    text width=34mm, minimum height=20mm, inner sep=4pt},
       flow/.style={-{Latex[length=2.2mm]}, thick},
       lbl/.style={font=\scriptsize, fill=white, inner sep=1.5pt, align=center},
   ]
+  \hyphenpenalty=10000\exhyphenpenalty=10000
   \node[phase] (p) at (0,0)  {\textbf{Parent selection}\\[3pt]pick which archived
         agent to improve\\[2pt]{\itshape\scriptsize by score $\times$ novelty}};
-  \node[phase] (g) at (6,0)  {\textbf{Child generation}\\[3pt]make an improved
+  \node[phase] (g) at (6.5,0)  {\textbf{Child generation}\\[3pt]make an improved
         copy\\[2pt]{\itshape\scriptsize diagnose, problem, self-edit}};
-  \node[phase] (e) at (12,0) {\textbf{Child evaluation}\\[3pt]test the patched child
+  \node[phase] (e) at (13,0) {\textbf{Child evaluation}\\[3pt]test the patched child
         through 2 gates\\[2pt]{\itshape\scriptsize Gate~1 compile, Gate~2 score}};
-  \node[store] (a) at (18,0) {\textbf{Archive update}\\[3pt]store the surviving
+  \node[store] (a) at (19.5,0) {\textbf{Archive update}\\[3pt]store the surviving
         children\\[2pt]{\itshape\scriptsize keep\_all: every compiled child}};
 
   \draw[flow] (p) -- (g)
@@ -108,8 +109,9 @@ improvements are inherited, not rediscovered.
   \draw[flow] (e) -- (a)
         node[lbl, midway, above=1pt]{compiled\\children};
 
-  \draw[flow] (a.south) -- ++(0,-1.6) -| (p.south)
-        node[lbl, midway, below=1pt]{next generation: the archive becomes the parent pool};
+  \draw[flow] (a.south) -- ++(0,-1.6) -| (p.south);
+  \node[lbl, below=1pt] at ($(p.south)!0.5!(a.south) + (0,-1.6)$)
+        {next generation: the archive becomes the parent pool};
   \end{tikzpicture}%
   }
   \caption{The DGM evolution loop. \textbf{Parent selection} samples an
