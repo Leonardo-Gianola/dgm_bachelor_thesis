@@ -36,14 +36,14 @@ generation.
       ext/.style={draw, dashed, rounded corners=3pt, fill=black!2,
                   align=center, text width=38mm, minimum height=12mm,
                   inner sep=4pt},
-      flow/.style={-{Latex[length=2.6mm]}, thick},
-      flowd/.style={-{Latex[length=2.6mm]}, thick, dashed},
+      flow/.style={-{Latex[length=3.4mm, width=2.8mm]}, very thick},
+      flowd/.style={-{Latex[length=3.4mm, width=2.8mm]}, very thick, dashed},
       lbl/.style={font=\scriptsize, fill=white, inner sep=1.5pt, align=center},
   ]
   \hyphenpenalty=10000\exhyphenpenalty=10000
 
   % pipeline spine: one generation, top to bottom
-  \node[stage] (orch)  at (0, 0)   {\textbf{1.\ Orchestration}\\[2pt]
+  \node[stage] (orch)  at (0, 0)   {\textbf{1.\ Evolution loop}\\[2pt]
         {\ttfamily\scriptsize DGM\_outer.py + schedulers.py}\\[2pt]
         {\scriptsize choose parents, run a generation, promote survivors}};
   \node[stage] (gen)   at (0,-2.6) {\textbf{2.\ Generate child}\\[2pt]
