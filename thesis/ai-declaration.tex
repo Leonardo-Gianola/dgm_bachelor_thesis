@@ -14,9 +14,11 @@ to surface candidate references and to cross-check citations against
 their sources. An example prompt used during this process looks like
 the following:
 
+\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}[style=prompt]
 I am writing the Background chapter of a bachelor thesis on multi-fidelity schedulers (Successive Halving, Hyperband, ASHA) applied to a self-improving coding agent. Can you list the canonical references for each of these methods and verify whether the Karnin et al. 2013 paper is the correct primary citation for Successive Halving?
 \end{lstlisting}
+\end{minipage}
 
 \subsection*{Brainstorming and idea generation}
 Claude Code \cite{claude-code} was used to discuss design alternatives
@@ -27,16 +29,20 @@ recurring use-cases:
     between synchronous Hyperband and ASHA, sanity-checking the
     promotion-quota formulation, and reviewing the per-rung budget
     accounting. An example prompt used in this stage:
+    \noindent\begin{minipage}{\linewidth}
     \begin{lstlisting}[style=prompt]
 In ASHA, the promotion quota per rung is computed as max(1, ceil(n / eta^(r+1))). Is this a cumulative cap on total promotions ever from rung r, or a per-rung count refreshed each time a candidate finishes? I want to make sure my implementation matches the original Li et al. 2020 paper.
     \end{lstlisting}
+    \end{minipage}
     \item Experimental-protocol brainstorming: identifying threats to
     validity, choosing diagnostic metrics, and deciding which
     constants to fix across runs. An example prompt used in this
     stage:
+    \noindent\begin{minipage}{\linewidth}
     \begin{lstlisting}[style=prompt]
 I am running one seed per scheduler on swe_verified_mini, four generations each, fixed initial archive. What are the main threats to validity I should disclose, and which diagnostic metrics would help a reader judge whether the cost-vs-accuracy comparison is fair?
     \end{lstlisting}
+    \end{minipage}
 \end{enumerate}
 
 \subsection*{Programming}
@@ -65,6 +71,8 @@ rewordings that the author then accepted, rejected, or rewrote. The
 model was not used to ghostwrite chapter body text. An example prompt
 used in this stage:
 
+\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}[style=prompt]
 Review this paragraph for clarity and internal consistency with the rest of the Method chapter. Flag any sentence whose meaning is ambiguous, any term used inconsistently with earlier sections, and any claim that is stronger than what the single-seed pilot data supports. Do not rewrite the paragraph; list the issues.
 \end{lstlisting}
+\end{minipage}
