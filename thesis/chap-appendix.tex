@@ -122,7 +122,56 @@ rung-aligned \texttt{best\_child\_score} recorded in
 \texttt{dgm\_metadata.jsonl}. Raw \emph{Best} values of 1.000
 correspond to rung-0 single-task evaluations and should be read
 alongside the rung-0 fluke caveat in
-Section~\ref{sec:results-validity}.
+Section~\ref{sec:results-validity}. More generally, this \emph{Best}
+column is DGM's raw stored \texttt{best\_child\_score}: each child's
+score summed across its evaluation stages, then the maximum over all
+children of the generation (including rung-0 single-task children). The
+Results chapter instead recomputes the best promoted child's final-rung
+resolved/submitted, so the two are expected to differ. For example,
+Baseline generation~3 reads $0.625$ here ($40/64$, stage-summed) but
+$59.57\%$ ($28/47$) in Table~\ref{tab:results-pergen}: \emph{Best} is
+the inflated internal figure, the Results rate is the clean one. The
+stage-by-stage breakdown of this example is given in
+Table~\ref{tab:appendix-score-breakdown}.
+
+The \emph{Tasks} column counts
+every task evaluation the generation actually ran. This is not the same
+count as the \emph{Intended} workload in
+Table~\ref{tab:results-workload}, which counts each child's planned
+final-rung size. Both are correct; they simply measure different things,
+so the totals match for Baseline and ASHA but differ for GA
+(\emph{Tasks}~$109$, \emph{Intended}~$103$) and Hyperband
+(\emph{Tasks}~$356$, \emph{Intended}~$324$). The gap is the
+non-compiling children: \emph{Tasks} charges every child its first-rung
+evaluation, including patches that did not compile, whereas
+\emph{Intended} counts only children that compiled. Hyperband spawned 16
+non-compiling children over the run ($16 \times 2$ rung-0 tasks, $+32$)
+and GA spawned 2 ($2 \times 3$, $+6$). Baseline has no gap because every
+child compiled, and ASHA has none because it admits only compiled
+children into its rungs (its rung-0 count is the compiled count, not the
+spawned count), so non-compiling children are never charged.
+
+\begin{table}[ht]
+\centering
+\caption{How Baseline generation~3's best child yields two different
+rates. \texttt{get\_all\_performance} sums resolved and submitted across
+every evaluation stage (each stage re-runs the cumulative task set and
+writes its own prediction file), so the stored
+\texttt{best\_child\_score} is $40/64 = 0.625$. The Results chapter
+counts the final stage only, $28/47 = 59.57\%$.}
+\label{tab:appendix-score-breakdown}
+\begin{tabular}{lrr}
+\hline
+Stage file(s) & Resolved & Submitted \\
+\hline
+small + medium                           & 12 & 17 \\
+full (final stage)                       & 28 & 47 \\
+\hline
+summed $\to$ \texttt{best\_child\_score} & 40 & 64 \\
+final stage only $\to$ Results           & 28 & 47 \\
+\hline
+\end{tabular}
+\end{table}
 
 \begin{table}[ht]
 \centering

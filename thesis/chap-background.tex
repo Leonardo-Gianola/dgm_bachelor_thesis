@@ -50,7 +50,8 @@ model checkpoint. The search is therefore over Python code that
 orchestrates a frozen pretrained foundation model, and the identity of
 an agent is a git commit of its agent directory.
 
-The loop starts with \emph{parent selection}. By default the parent is
+The loop, shown in Figure~\ref{fig:dgm-loop}, starts with
+\emph{parent selection}. By default the parent is
 sampled based on its accuracy score (read from the run metadata) and
 a \emph{target entry}, which is the specific weakness the child must
 address (described in detail in the Targeted Self-Improvement
@@ -79,8 +80,56 @@ generation's parent pool, so a useful mutation (a new tool, a smarter
 retry loop) becomes the starting code for all subsequent children:
 improvements are inherited, not rediscovered.
 
-% TODO: add block diagram of the loop (parent selection / child
-% generation / child evaluation / archive update).
+\begin{figure}[tb]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[
+      font=\small,
+      phase/.style={draw, rounded corners=2pt, fill=black!3, align=center,
+                    text width=30mm, minimum height=20mm, inner sep=4pt},
+      store/.style={draw, rounded corners=2pt, fill=orange!12, align=center,
+                    text width=30mm, minimum height=20mm, inner sep=4pt},
+      flow/.style={-{Latex[length=2.2mm]}, thick},
+      lbl/.style={font=\scriptsize, fill=white, inner sep=1.5pt, align=center},
+  ]
+  \node[phase] (p) at (0,0)  {\textbf{Parent selection}\\[3pt]pick which archived
+        agent to improve\\[2pt]{\itshape\scriptsize by score $\times$ novelty}};
+  \node[phase] (g) at (6,0)  {\textbf{Child generation}\\[3pt]make an improved
+        copy\\[2pt]{\itshape\scriptsize diagnose, problem, self-edit}};
+  \node[phase] (e) at (12,0) {\textbf{Child evaluation}\\[3pt]test the patched child
+        through 2 gates\\[2pt]{\itshape\scriptsize Gate~1 compile, Gate~2 score}};
+  \node[store] (a) at (18,0) {\textbf{Archive update}\\[3pt]store the surviving
+        children\\[2pt]{\itshape\scriptsize keep\_all: every compiled child}};
+
+  \draw[flow] (p) -- (g)
+        node[lbl, midway, above=1pt]{\textbf{target} = agent\\\textbf{entry} = task};
+  \draw[flow] (g) -- (e)
+        node[lbl, midway, above=1pt]{git patch\\{\scriptsize(diff over parent)}};
+  \draw[flow] (e) -- (a)
+        node[lbl, midway, above=1pt]{compiled\\children};
+
+  \draw[flow] (a.south) -- ++(0,-1.6) -| (p.south)
+        node[lbl, midway, below=1pt]{next generation: the archive becomes the parent pool};
+  \end{tikzpicture}%
+  }
+  \caption{The DGM evolution loop. \textbf{Parent selection} samples an
+    archived agent to improve, weighted by score $\times$ novelty, and
+    emits two things: the \emph{target} (the parent agent whose code is
+    edited) and the \emph{entry} (which failure to focus on: a failed
+    SWE-bench instance, or a meta-task such as
+    \texttt{solve\_empty\_patches}). \textbf{Child generation} diagnoses
+    why the parent failed the entry, turns that into an improvement goal,
+    and has the agent rewrite its own code, emitting a \emph{git patch};
+    a child is stored as a diff over its parent, not as a full copy.
+    \textbf{Child evaluation} applies two gates: Gate~1 checks the patched
+    child runs at all (dead patches are dropped) and Gate~2 runs benchmark
+    tasks to measure the resolve rate; only children that clear Gate~1
+    (\emph{compiled children}) continue. \textbf{Archive update} keeps
+    every surviving child (\texttt{keep\_all}, not only the winners). The
+    archive is then the parent pool for the next generation, closing the
+    loop.}
+  \label{fig:dgm-loop}
+\end{figure}
 
 \subsection{Archive and Parent Selection}
 
