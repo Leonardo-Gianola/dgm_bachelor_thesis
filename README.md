@@ -1,137 +1,126 @@
-<h1 align="center">
-    Darwin Gödel Machine:<br/>Open-Ended Evolution of Self-Improving Agents
-</h1>
+# Multi-fidelity evaluation schedulers for the Darwin Gödel Machine
 
-<p align="center">
-  <a href="https://github.com/jennyzzt/dgm/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge"></a>
-  <a href="https://arxiv.org/abs/2505.22954"><img src="https://img.shields.io/badge/arXiv-2505.22954-b31b1b.svg?logo=arxiv&style=for-the-badge"></a>
-  <a href="https://sakana.ai/dgm/"><img src="https://img.shields.io/badge/-Blog-%238D6748?style=for-the-badge&logo=Website&logoColor=white"></a>
-  <a href="https://x.com/SakanaAILabs/status/1928272612431646943"><img src="https://img.shields.io/badge/twitter-%230077B5.svg?&style=for-the-badge&logo=twitter&logoColor=white&color=00acee"></a>
-  <a href="https://drive.google.com/drive/folders/1Kcu9TbIa9Z50pJ7S6hH9omzzD1pxIYZC?usp=sharing"><img src="https://img.shields.io/badge/Experiment%20Logs-4285F4?style=for-the-badge&logo=googledrive&logoColor=white"></a>
-</p>
+BSc thesis, University of Southern Denmark, spring 2026. Supervisor: Serkan Ayvaz. Graded 12 on the Danish scale.
 
+This is a fork of the [Darwin Gödel Machine](https://github.com/jennyzzt/dgm) ([paper](https://arxiv.org/abs/2505.22954), Zhang et al., Sakana AI). The upstream system evolves a population of coding agents that rewrite their own source code, scores each child on SWE-bench, and keeps the best ones in an archive that seeds the next generation.
 
-Repository for **Darwin Gödel Machine (DGM)**, a novel self-improving system that iteratively modifies its own code (thereby also improving its ability to modify its own codebase) and empirically validates each change using coding benchmarks.
+**The question this thesis asks.** Most of the compute in that loop is spent fully evaluating children that end up worse than their parent. Can a multi-fidelity evaluation scheduler cut that waste without giving up final accuracy?
 
-<p align="center">
-  <img src="./misc/overview.gif" width="100%" height="auto" />
-</p>
-<!-- <p align="center">
-<img src="./misc/conceptual.svg"/></a><br>
-</p> -->
+**What I did.** I added four evaluation schedulers behind a single flag, held everything else fixed (same model, same initial archive, same per-generation task budget, same seed), and ran each one for four generations on a 50-task subset of SWE-bench Verified. That makes the scheduler the only independent variable.
 
+---
 
-## Setup
-```bash
-# API keys, add to ~/.bashrc
-export OPENAI_API_KEY='...'
-export ANTHROPIC_API_KEY='...'
+## The four schedulers
+
+All four live in [`schedulers.py`](schedulers.py) and are selected with `--scheduler`.
+
+| Scheduler | Idea |
+|---|---|
+| `baseline` | The upstream policy. Every child is evaluated through a fixed three-stage pipeline, then promoted on score. This is the reference cost. |
+| `hyperband` | Synchronous successive halving. Many children start on a small task budget, survivors are re-evaluated on larger rungs, so cheap failures die cheap. |
+| `asha` | The asynchronous version. A free worker promotes whichever candidate is currently promotable instead of waiting for a whole rung to finish, which keeps machines busy at the cost of ranking on less information. |
+| `ga` | A deliberate control. A blind high-temperature mutation loop with no error-log context, to see how much of the improvement comes from informed self-modification at all rather than from search pressure. |
+
+Shared controls, so the comparison is fair: `--generation_task_budget_total` caps the tasks any scheduler may spend per generation, `--selfimprove_size` fixes the parent slots, and every run starts from the same bootstrapped archive.
+
+## Results
+
+Four single-seed pilot runs, four generations each, `swe_verified_mini` (50 SWE-bench Verified tasks), model `minimax/minimax-m2.5` via OpenRouter. All four start from the same initial agent at **34.04%** (16 of 47 submitted).
+
+| Scheduler | Best agent | Lift over the initial agent | Cost | Wall time |
+|---|---:|---:|---:|---:|
+| `baseline` | 59.57% (28/47) | +25.5 pp | $32.47 | ~10 h |
+| `hyperband` | **75.86%** (22/29) | +41.8 pp | $44.98 | ~30 h |
+| `ga` | 70.59% (24/34) | +36.6 pp | **$26.00** | 9.6 h |
+| `asha` | 65.85% (27/41) | +31.8 pp | $39.00 | 20.3 h |
+
+Two readings, and both are in the thesis:
+
+- **Hyperband buys the highest peak, and it is not cheap.** It reached the best agent of the four but spent the most to get there.
+- **The blind genetic algorithm is the cost-efficiency winner.** It captured about 85% of Hyperband's lift for roughly a third of the money, which is an uncomfortable result for the assumption that informed self-modification is what drives the loop.
+
+**Read the denominators before quoting the accuracy numbers.** The DGM metric is `resolved / submitted`, and a task the agent never emits a prediction for drops out of the denominator entirely, while an empty patch stays in it as a failure. Hyperband's 75.86% sits on 29 submitted tasks rather than 47, so part of that headline is a denominator artefact. The results chapter works through this rather than hiding it.
+
+**What this evidence does not support.** n=1 per scheduler, one seed, four generations, no significance tests. The API budget ran out before the planned multi-seed phases, so the experiments were frozen and the thesis is written as an exploratory cost-versus-accuracy reading of four candidates, not as a ranking. Total spend across all four pilots was about $142.
+
+Per-run detail, including per-generation tables and narrative notes, is in [`experiments/results/`](experiments/results/). Figures are regenerated with `python experiments/results/make_plots.py`.
+
+## What is mine and what is upstream
+
+Mine:
+
+```
+schedulers.py                     the four schedulers
+DGM_outer.py                      --scheduler wiring, shared budget controls
+self_improve_step.py              child generation and evaluation split out for reuse by schedulers
+experiments/run_scheduler.py      per-scheduler runner with live generation metrics
+experiments/run_full_eval.py      full evaluation of a chosen agent
+compare_scheduler_runs.py         aggregate runs into CSV and JSON
+experiments/results/              pilot results, notes and plots
+benchmarks/                       mini-benchmark caching for offline reproducible runs
+thesis/                           the thesis itself, LaTeX, SDU template
+website/                          small run viewer
 ```
 
-```bash
-# Verify that Docker is properly configured in your environment.
-docker run hello-world
- 
-# If a permission error occurs, add the user to the Docker group
-sudo usermod -aG docker $USER
-newgrp docker
-```
+Upstream, kept mostly as it was: the evolution loop structure, the coding agent, the SWE-bench and Polyglot harnesses, the Docker sandboxing and the initial archives.
+
+Along the way the fork also picked up the fixes that long unattended runs force on you: a per-image Docker build lock, container startup retry with exponential backoff, empty-patch retry, corrupt-JSONL tolerance in the summary printer, a separate timeout for the ASHA evaluation loop, and a much shorter per-task agent timeout.
+
+## Running it
 
 ```bash
-# Install dependencies
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
-# Optional: for running analysis
-sudo apt-get install graphviz graphviz-dev
-pip install -r requirements_dev.txt
+export OPENAI_API_KEY='...'
+export ANTHROPIC_API_KEY='...'
+docker run hello-world          # Docker must be working, every child runs sandboxed
+
+cd swe_bench && git clone https://github.com/princeton-nlp/SWE-bench.git
+cd SWE-bench && git checkout dc4c087c2b9e4cefebf2e3d201d27e36 && pip install -e . && cd ../../
+
+python -m benchmarks.cache_swe_verified_mini    # cache the mini benchmark
 ```
+
+Bootstrap the initial archive once:
 
 ```bash
-# Clone SWE-bench
-cd swe_bench
-git clone https://github.com/princeton-nlp/SWE-bench.git
-cd SWE-bench
-git checkout dc4c087c2b9e4cefebf2e3d201d27e36
-pip install -e .
-cd ../../
-
-# Prepare Polyglot
-# Make sure git is properly configured in your environment with username and email
-python -m polyglot.prepare_polyglot_dataset
+python test_swebench.py --benchmark swe_verified_mini --full_mini \
+  --agent_dir initial_swe_verified_mini --write_agent_metadata
 ```
+
+Then run a scheduler:
 
 ```bash
-# Optional but recommended: cache the default mini benchmark locally for offline/reproducible runs
-python -m benchmarks.cache_swe_verified_mini
+# reference
+python DGM_outer.py --scheduler baseline --max_generation 4
+
+# multi-fidelity
+python DGM_outer.py --scheduler hyperband \
+  --hyperband_eta 5 --hyperband_budgets 2,10,50 --hyperband_initial_children 15 \
+  --max_generation 4 --generation_task_budget_total 100
+
+# resume an interrupted run
+python DGM_outer.py --continue_from output_dgm/<run_id>
 ```
 
-## Running the DGM
-```bash
-python DGM_outer.py
-```
-By default, outputs will be saved in the `output_dgm/` directory.
-The default benchmark is `swe_verified_mini`, which uses the 50-task
-`MariusHobbhahn/swe-bench-verified-mini` dataset. Legacy benchmarks are still available:
+Output lands in `output_dgm/<timestamp>/`. Compare finished runs with `python compare_scheduler_runs.py`.
 
-```bash
-python DGM_outer.py --benchmark swe_verified_legacy
-python DGM_outer.py --benchmark polyglot_legacy
-```
+A word of warning if you want to reproduce this: a single four-generation run took between 10 and 30 hours of wall time and tens of dollars of API spend. Start with `--single_task` on `test_swebench.py`.
 
-Before reporting mini benchmark results, bootstrap the `initial_swe_verified_mini/`
-archive with a full 50-task baseline run:
+## The thesis
 
-```bash
-python test_swebench.py --benchmark swe_verified_mini --full_mini --agent_dir initial_swe_verified_mini --write_agent_metadata
-```
+LaTeX sources are in [`thesis/`](thesis/). Build with `make -C thesis`. Chapters follow the experiment: background on self-improving systems and multi-fidelity search, the scheduler designs, the implementation, the results with the metric caveats, and a conclusion that treats the scheduler choice as a real knob in self-improving systems rather than a solved one. `thesis/ai-declaration.tex` documents how AI tooling was used, as required.
 
-Useful manual benchmark modes:
+## Credit and license
 
-```bash
-# Single task smoke test
-python test_swebench.py --benchmark swe_verified_mini --single_task django__django-11790 --agent_dir initial_swe_verified_mini
+The DGM framework, the coding agent and the benchmark harnesses are the work of the upstream authors and are used under Apache 2.0. My contribution is the scheduler layer, the experimental protocol, the results and the thesis.
 
-# Run a specific subset file (for example a Hyperband rung)
-python test_swebench.py --benchmark swe_verified_mini --subset benchmarks/subsets/swe_verified_mini/rung1_5.json --agent_dir initial_swe_verified_mini
-
-# Full 50-task mini run
-python test_swebench.py --benchmark swe_verified_mini --full_mini --agent_dir initial_swe_verified_mini
-```
-
-## File Structure
-- `analysis/` scripts used for plotting and analysis
-- `initial/` SWE-bench logs and performance of the initial agent
-- `initial_swe_verified_mini/` fresh mini benchmark seed archive
-- `initial_polyglot/` Polyglot logs and performance of the initial agent
-- `benchmarks/` benchmark registry, cached mini dataset metadata, and subset manifests
-- `swe_bench/` code needed for SWE-bench evaluation
-- `polyglot/` code needed for Polyglot evaluation
-- `prompts/` prompts used for foundation models
-- `tests/` tests for the DGM system
-- `tools/` tools available to the foundation models
-- `coding_agent.py` main implementation of the initial coding agent
-- `DGM_outer.py` entry point for running the DGM algorithm
-
-## Logs from Experiments
-This [google drive folder](https://drive.google.com/drive/folders/1Kcu9TbIa9Z50pJ7S6hH9omzzD1pxIYZC?usp=sharing) contains all the foundation model output logs from the experiments shown in the paper.
-
-## Safety Consideration
-> [!WARNING]  
-> This repository involves executing untrusted, model-generated code. We strongly advise users to be aware of the associated safety risks. While it is highly unlikely that such code will perform overtly malicious actions under our current settings and with the models we use, it may still behave destructively due to limitations in model capability or alignment. By using this repository, you acknowledge and accept these risks.
-
-## Acknowledgement
-
-The evaluation framework implementations are based on the [SWE-bench](https://github.com/swe-bench/SWE-bench) and [polyglot-benchmark](https://github.com/Aider-AI/polyglot-benchmark) repositories.
-
-## Citing
-If you find this project useful, please consider citing:
 ```bibtex
 @article{zhang2025darwin,
-  title={Darwin Godel Machine: Open-Ended Evolution of Self-Improving Agents},
-  author={Zhang, Jenny and Hu, Shengran and Lu, Cong and Lange, Robert and Clune, Jeff},
-  journal={arXiv preprint arXiv:2505.22954},
-  year={2025}
+  title  = {Darwin G\"odel Machine: Open-Ended Evolution of Self-Improving Agents},
+  author = {Zhang, Jenny and Hu, Shengran and Lu, Cong and Lange, Robert and Clune, Jeff},
+  journal= {arXiv preprint arXiv:2505.22954},
+  year   = {2025}
 }
 ```
